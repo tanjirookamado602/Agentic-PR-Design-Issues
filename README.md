@@ -55,7 +55,7 @@ python scripts/formal_dataset_screening.py
 ## 📜 Citation
 
 ```bibtex
-@article{ullah2026understanding,
+@article{assadullah2026understanding,
   title={Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study},
   author={Assad Ullah, Muhammad and Liang, Peng},
   journal={arXiv preprint arXiv:XXXX.XXXXX},
