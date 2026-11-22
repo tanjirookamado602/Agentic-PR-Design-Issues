@@ -1,0 +1,12 @@
+{
+  "total_samples": 500,
+  "design_issues_count": 64,
+  "design_issue_rate_pct": 12.8,
+  "category_distribution": {
+    "Duplication/Reuse": 21,
+    "Architectural Patterns": 18,
+    "General Design/Maintainability": 10,
+    "Abstraction & Extensibility": 8,
+    "Modularity & Layering": 7
+  }
+}

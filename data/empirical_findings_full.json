@@ -1,0 +1,89 @@
+{
+  "raw_comments_total": 291248,
+  "bots_filtered": 68169,
+  "noise_filtered": 5008,
+  "substantive_comments_total": 218071,
+  "design_issues_total": 30296,
+  "prevalence_rate_pct": 13.89,
+  "category_distribution": {
+    "Architectural Patterns": 8947,
+    "Duplication/Reuse": 8894,
+    "General Design/Maintainability": 5035,
+    "Abstraction & Extensibility": 4130,
+    "Modularity & Layering": 3290
+  },
+  "category_distribution_by_agent": {
+    "Abstraction & Extensibility": {
+      "Claude_Code": 261,
+      "Copilot": 3222,
+      "Cursor": 103,
+      "Devin": 80,
+      "Google_Jules": 31,
+      "OpenAI_Codex": 425,
+      "Unknown": 8
+    },
+    "Architectural Patterns": {
+      "Claude_Code": 513,
+      "Copilot": 7397,
+      "Cursor": 172,
+      "Devin": 127,
+      "Google_Jules": 72,
+      "OpenAI_Codex": 649,
+      "Unknown": 17
+    },
+    "Duplication/Reuse": {
+      "Claude_Code": 534,
+      "Copilot": 6828,
+      "Cursor": 203,
+      "Devin": 171,
+      "Google_Jules": 121,
+      "OpenAI_Codex": 1022,
+      "Unknown": 15
+    },
+    "General Design/Maintainability": {
+      "Claude_Code": 233,
+      "Copilot": 3877,
+      "Cursor": 118,
+      "Devin": 97,
+      "Google_Jules": 54,
+      "OpenAI_Codex": 641,
+      "Unknown": 15
+    },
+    "Modularity & Layering": {
+      "Claude_Code": 186,
+      "Copilot": 2380,
+      "Cursor": 110,
+      "Devin": 48,
+      "Google_Jules": 44,
+      "OpenAI_Codex": 513,
+      "Unknown": 9
+    }
+  },
+  "density_per_k_comments": {
+    "Claude_Code": 152.0,
+    "Copilot": 138.5,
+    "Cursor": 121.6,
+    "Devin": 81.3,
+    "Google_Jules": 162.0,
+    "OpenAI_Codex": 155.5,
+    "Unknown": 129.6
+  },
+  "agent_pr_state_crosstab": {
+    "closed": {
+      "Claude_Code": 1523,
+      "Copilot": 21852,
+      "Cursor": 631,
+      "Devin": 516,
+      "Google_Jules": 320,
+      "OpenAI_Codex": 2819
+    },
+    "open": {
+      "Claude_Code": 204,
+      "Copilot": 1852,
+      "Cursor": 75,
+      "Devin": 7,
+      "Google_Jules": 2,
+      "OpenAI_Codex": 431
+    }
+  }
+}
