@@ -1,73 +1,79 @@
-# Replication Package: Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests
+<div align="center">
+  <h1 align="center">Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study</h1>
+</div>
 
-This repository contains the replication package, screening scripts, codebooks, and empirical datasets for the paper:
+<div align="center">
+    <a href="https://github.com/tanjirookamado602/Agentic-PR-Design-Issues">
+      <img src="https://img.shields.io/badge/Code-GitHub-2d333b?style=flat-square&logo=github" alt="github">
+    </a>
+    <img src="https://img.shields.io/badge/Journal-ACM_TOSEM-blue?style=flat-square" alt="TOSEM">
+    <img src="https://img.shields.io/badge/Dataset-AIDev_v5-orange?style=flat-square" alt="AIDev">
+    <hr>
+</div>
 
-> **"Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study"**  
-> *Muhammad Assad Ullah and Peng Liang*  
-> School of Computer Science, Wuhan University, China.
+<p align="left">
+  This is the official replication package for the manuscript: <b>"Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study"</b>, authored by Muhammad Assad Ullah and Peng Liang (School of Computer Science, Wuhan University). It includes the screening pipeline, qualitative gold datasets, taxonomy codebooks, and instructions to reproduce the findings.
+</p>
 
----
-
-## 📁 Repository Structure
+## 📋 File Organization
 
 ```
 .
 ├── data/
-│   ├── empirical_findings_full.json     # Aggregated empirical metrics across 218,071 comments
-│   ├── gold_sample_200_for_coding.csv   # Statistically sampled qualitative gold corpus
-│   └── pilot_summary.json               # Pilot calibration and inter-rater reliability metrics
+│   ├── empirical_findings_full.json     # Complete distribution and density metrics across 218,071 comments
+│   ├── gold_sample_200_for_coding.csv   # Statistically sampled gold dataset for qualitative open coding
+│   └── pilot_summary.json               # Pilot calibration and inter-rater reliability metrics (Cohen's kappa = 0.84)
 ├── docs/
-│   ├── Codebook_Design_Issues.md        # Comprehensive taxonomy and annotation guidelines
-│   ├── Methodology_Blueprint_2610.md   # Alignment with Wuhan University methodology
+│   ├── Codebook_Design_Issues.md        # Comprehensive design issue taxonomy and annotation codebook
+│   ├── Methodology_Blueprint_2610.md   # Alignment with Wuhan University empirical methodology
 │   └── Research_Protocol.md             # Formal research protocol
 ├── scripts/
 │   ├── formal_dataset_screening.py      # Automated bot elimination & calibrated screening pipeline
-│   └── sample_coder.py                  # Grounded theory qualitative extraction helper
+│   ├── calculate_metrics.py             # Script to aggregate cross-agent densities and statistical tables
+│   ├── run_pilot_deepseek.py            # Automated screening calibration script
+│   └── sample_pilot_dataset.py          # Random stratified sampling instrument
 └── README.md
 ```
-
----
 
 ## 🔬 Dataset Overview (AIDev v5)
 
 - **Total Pull Requests Mined:** 361,296
 - **Total Inline Review Comments:** 291,248
-- **Automated Bots Eliminated:** 68,169 (23.4%)
-- **Conversational Noise Filtered:** 5,008 (2.2%)
+- **Automated Bots Eliminated:** 68,169 (23.4%) produced by CI/CD tools (*Codecov, Dependabot, SonarCloud, Renovate*)
+- **Conversational Noise Filtered:** 5,008 (2.2%) comments $<15$ characters (*"LGTM"*, *"+1"*, *"thanks"*)
 - **Substantive Human Review Comments Analyzed:** 218,071 across 6 AI coding agents (*GitHub Copilot, OpenAI Codex, Claude Code, Cursor, Devin, Google Jules*)
-- **Total Design Issues Identified:** 30,296 (13.89% prevalence)
+- **Identified Design Issues:** 30,296 (13.89% overall prevalence)
 
----
+## 🚀 Reproduction Steps
 
-## 🚀 How to Replicate the Screening Pipeline
-
-### 1. Requirements
-- Python 3.10+
-- Pandas, PyArrow
-
+### 1. Environment Setup
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install pandas pyarrow
 ```
 
-### 2. Download the Raw AIDev Dataset
-Download `pr_review_comments.parquet` and `pull_request.parquet` from Hugging Face:
-```bash
-# Hugging Face: hao-li/AIDev
-```
+### 2. Dataset Retrieval
+Download `pull_request.parquet` and `pr_review_comments.parquet` from the Hugging Face AIDev repository:
+- Source: [Hugging Face: `hao-li/AIDev`](https://huggingface.co/datasets/hao-li/AIDev)
 
-### 3. Run the Screening Pipeline
+### 3. Execute the Automated Screening Pipeline
+Run the screening pipeline to reproduce the bot-filtering and design issue classification:
 ```bash
 python scripts/formal_dataset_screening.py
 ```
 
+### 4. Qualitative Analysis (Grounded Theory)
+The sampled gold corpus for RQ2 (Root Causes) and RQ3 (Remediation Strategies) is available in:
+- `data/gold_sample_200_for_coding.csv`
+
 ---
 
 ## 📜 Citation
-If you use this dataset or replication package in your research, please cite:
 ```bibtex
 @article{ullah2026understanding,
   title={Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study},
-  author={Ullah, Muhammad Assad and Liang, Peng},
+  author={Assad Ullah, Muhammad and Liang, Peng},
   journal={ACM Transactions on Software Engineering and Methodology},
   year={2026}
 }
