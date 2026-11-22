@@ -6,75 +6,59 @@
     <a href="https://github.com/tanjirookamado602/Agentic-PR-Design-Issues">
       <img src="https://img.shields.io/badge/Code-GitHub-2d333b?style=flat-square&logo=github" alt="github">
     </a>
-    <img src="https://img.shields.io/badge/Journal-ACM_TOSEM-blue?style=flat-square" alt="TOSEM">
-    <img src="https://img.shields.io/badge/Dataset-AIDev_v5-orange?style=flat-square" alt="AIDev">
+    <a href="https://arxiv.org/abs/XXXX.XXXXX">
+      <img src="https://img.shields.io/badge/Paper-arXiv-b31b1b?style=flat-square&logo=arxiv&logoColor=white" alt="arXiv">
+    </a>
     <hr>
 </div>
 
 <p align="left">
-  This is the official replication package for the manuscript: <b>"Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study"</b>, authored by Muhammad Assad Ullah and Peng Liang (School of Computer Science, Wuhan University). It includes the screening pipeline, qualitative gold datasets, taxonomy codebooks, and instructions to reproduce the findings.
+  This is the replication package for the paper: "Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study", including the dataset, screening scripts, codebooks, and so on (see the description below).
 </p>
 
 ## 📋 File Organization
 
-```
-.
-├── data/
-│   ├── empirical_findings_full.json     # Complete distribution and density metrics across 218,071 comments
-│   ├── gold_sample_200_for_coding.csv   # Statistically sampled gold dataset for qualitative open coding
-│   └── pilot_summary.json               # Pilot calibration and inter-rater reliability metrics (Cohen's kappa = 0.84)
-├── docs/
-│   ├── Codebook_Design_Issues.md        # Comprehensive design issue taxonomy and annotation codebook
-│   ├── Methodology_Blueprint_2610.md   # Alignment with Wuhan University empirical methodology
-│   └── Research_Protocol.md             # Formal research protocol
-├── scripts/
-│   ├── formal_dataset_screening.py      # Automated bot elimination & calibrated screening pipeline
-│   ├── calculate_metrics.py             # Script to aggregate cross-agent densities and statistical tables
-│   ├── run_pilot_deepseek.py            # Automated screening calibration script
-│   └── sample_pilot_dataset.py          # Random stratified sampling instrument
-└── README.md
-```
+1. `data/` contains:
+   - `empirical_findings_full.json`: aggregated statistical metrics and cross-agent design issue distributions across 218,071 substantive human comments.
+   - `gold_sample_200_for_coding.csv`: the sampled gold dataset for qualitative open coding of root causes (RQ2) and remediation strategies (RQ3).
+   - `pilot_summary.json`: pilot calibration metrics and inter-rater reliability scores (Cohen's $\kappa = 0.84$).
+2. `scripts/` contains:
+   - `formal_dataset_screening.py`: automated CI/CD bot elimination and calibrated keyword-assisted screening pipeline.
+   - `calculate_metrics.py`: statistical aggregation script computing defect densities and cross-agent distributions.
+   - `sample_pilot_dataset.py`: stratified random sampling script.
+3. `docs/` contains:
+   - `Codebook_Design_Issues.md`: comprehensive taxonomy, inclusion/exclusion criteria, and codebook for design issues in agentic PRs.
+   - `Research_Protocol.md`: formal research protocol.
 
-## 🔬 Dataset Overview (AIDev v5)
+## 🚀 Experiment Replication Steps
 
-- **Total Pull Requests Mined:** 361,296
-- **Total Inline Review Comments:** 291,248
-- **Automated Bots Eliminated:** 68,169 (23.4%) produced by CI/CD tools (*Codecov, Dependabot, SonarCloud, Renovate*)
-- **Conversational Noise Filtered:** 5,008 (2.2%) comments $<15$ characters (*"LGTM"*, *"+1"*, *"thanks"*)
-- **Substantive Human Review Comments Analyzed:** 218,071 across 6 AI coding agents (*GitHub Copilot, OpenAI Codex, Claude Code, Cursor, Devin, Google Jules*)
-- **Identified Design Issues:** 30,296 (13.89% overall prevalence)
+This research study comprises three main phases:
 
-## 🚀 Reproduction Steps
+### Phase 1: Data Pre-processing
+- Mined 361,296 pull requests and 291,248 inline code review comments from the AIDev dataset.
+- Filtered out 68,169 automated bot comments from CI/CD tools (e.g., Codecov, Dependabot, SonarCloud).
+- Filtered out 5,008 conversational noise comments (<15 characters).
+- Yielded 218,071 substantive human review comments across six AI coding agents (*GitHub Copilot, OpenAI Codex, Claude Code, Cursor, Devin, Google Jules*).
 
-### 1. Environment Setup
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install pandas pyarrow
-```
-
-### 2. Dataset Retrieval
-Download `pull_request.parquet` and `pr_review_comments.parquet` from the Hugging Face AIDev repository:
-- Source: [Hugging Face: `hao-li/AIDev`](https://huggingface.co/datasets/hao-li/AIDev)
-
-### 3. Execute the Automated Screening Pipeline
-Run the screening pipeline to reproduce the bot-filtering and design issue classification:
+### Phase 2: Calibrated Automated Screening (RQ1)
+- Run the screening script to identify candidate design issues:
 ```bash
 python scripts/formal_dataset_screening.py
 ```
+- Total identified design issues: 30,296 (13.89% prevalence).
 
-### 4. Qualitative Analysis (Grounded Theory)
-The sampled gold corpus for RQ2 (Root Causes) and RQ3 (Remediation Strategies) is available in:
-- `data/gold_sample_200_for_coding.csv`
+### Phase 3: Qualitative Grounded Theory Analysis (RQ2 & RQ3)
+- Inspect `data/gold_sample_200_for_coding.csv` following Grounded Theory guidelines to extract underlying causes (RQ2) and remediation outcomes and actors (RQ3).
 
 ---
 
 ## 📜 Citation
+
 ```bibtex
 @article{ullah2026understanding,
   title={Understanding Human-Identified Design Issues in Code Reviews of Agentic Pull Requests: An Empirical Study},
   author={Assad Ullah, Muhammad and Liang, Peng},
-  journal={ACM Transactions on Software Engineering and Methodology},
+  journal={arXiv preprint arXiv:XXXX.XXXXX},
   year={2026}
 }
 ```
