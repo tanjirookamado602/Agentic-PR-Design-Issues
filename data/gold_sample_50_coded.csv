@@ -1,0 +1,3403 @@
+id,pull_request_url,path,user,agent,category,body,diff_hunk,created_at,is_design_issue,design_issue_type,root_cause,root_cause_explanation,remediation_strategy,remediation_actor,outcome
+2470803104,https://api.github.com/repos/PowerShell/PowerShell/pulls/26322,.github/workflows/analyze-reusable.yml,TravisEz13,Copilot,Duplication/Reuse,"@copilot implement this suggestion, but use the `StaticAnalysis` configuration.  Make the configuration a parameter to `Invoke-CIBuild` so that we don't duplicate code.  
+
+Also, `StaticAnalysis` produces full symbols and I don't know if that will work on Linux.","@@ -0,0 +1,76 @@
++name: CodeQL Analysis (Reusable)
++
++on:
++  workflow_call:
++    inputs:
++      runner_os:
++        description: 'Runner OS for CodeQL analysis'
++        type: string
++        required: false
++        default: ubuntu-latest
++
++permissions:
++  actions: read  # for github/codeql-action/init to get workflow details
++  contents: read  # for actions/checkout to fetch code
++  security-events: write  # for github/codeql-action/analyze to upload SARIF results
++
++env:
++  DOTNET_CLI_TELEMETRY_OPTOUT: 1
++  DOTNET_NOLOGO: 1
++  POWERSHELL_TELEMETRY_OPTOUT: 1
++  __SuppressAnsiEscapeSequences: 1
++  nugetMultiFeedWarnLevel: none
++
++jobs:
++  analyze:
++    name: Analyze
++    runs-on: ${{ inputs.runner_os }}
++
++    strategy:
++      fail-fast: false
++      matrix:
++        # Override automatic language detection by changing the below list
++        # Supported options are ['csharp', 'cpp', 'go', 'java', 'javascript', 'python']
++        language: ['csharp']
++        # Learn more...
++        # https://docs.github.com/en/github/finding-security-vulnerabilities-and-errors-in-your-code/configuring-code-scanning#overriding-automatic-language-detection
++
++    steps:
++    - name: Checkout repository
++      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
++      with:
++        fetch-depth: '0'
++
++    - uses: actions/setup-dotnet@v5
++      with:
++        global-json-file: ./global.json
++
++    # Initializes the CodeQL tools for scanning.
++    - name: Initialize CodeQL
++      uses: github/codeql-action/init@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v3.29.5
++      with:
++        languages: ${{ matrix.language }}
++        # If you wish to specify custom queries, you can do so here or in a config file.
++        # By default, queries listed here will override any specified in a config file.
++        # Prefix the list here with ""+"" to use these queries and those in the config file.
++        # queries: ./path/to/local/query, your-org/your-repo/queries@main
++
++    - run: |
++        Get-ChildItem -Path env: | Out-String -width 9999 -Stream | write-Verbose -Verbose
++      name: Capture Environment
++      shell: pwsh
++
++    - run: |
++        Import-Module .\tools\ci.psm1
++        Invoke-CIInstall -SkipUser
++      name: Bootstrap
++      shell: pwsh
++
++    - run: |
++        Import-Module .\tools\ci.psm1
++        Invoke-CIBuild
++      name: Build
++      shell: pwsh",2025-10-28T19:30:21Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,AI Coding Agent,Resolved
+2641466379,https://api.github.com/repos/Hack23/cia/pulls/8132,service.data.impl/src/main/resources/db-changelog-1.46.xml,Copilot,Copilot,Architectural Patterns,"Fixed in commit 6522b3c. Updated documentation to accurately reflect that suppleant columns now include committee context filters (`org_code IS NOT NULL` and `assignment_type = 'uppdrag'`), fully consistent with existing `total_committee_substitute_assignments` pattern.","@@ -0,0 +1,97 @@
++<?xml version=""1.0"" encoding=""UTF-8""?>
++<databaseChangeLog
++xmlns=""http://www.liquibase.org/xml/ns/dbchangelog""
++xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance""
++xsi:schemaLocation=""http://www.liquibase.org/xml/ns/dbchangelog
++                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.6.xsd"">
++
++<!-- 
++  Add: Grouped Committee Leadership Role Tracking (12 Columns, Database Best Practice)
++  Author: Intelligence Operative
++  Date: 2025-12-22
++  
++  Documentation References:
++  - Issue: https://github.com/Hack23/cia/issues/[TBD]
++  - Analysis: service.data.impl/sample-data/distinct_values/assignment_data_role_code.csv
++  - Schema Maintenance: service.data.impl/README-SCHEMA-MAINTENANCE.md
++  - View Catalog: DATABASE_VIEW_INTELLIGENCE_CATALOG.md
++  
++  Background:
++  Analysis of assignment_data.role_code reveals 60+ distinct political roles. Instead of 
++  creating individual columns for each role (which would add 34+ columns), we use a 
++  grouped approach with 6 strategic role categories covering key leadership positions.
++  
++  New Columns (12 total = 6 categories × 2 columns each):
++  1. Committee Chair (Ordförande, scoped to committee assignments): 435 assignments
++     - total_committee_chair_assignments
++     - current_committee_chair_assignments
++  
++  2. Committee Vice Chairs (grouped, scoped to committee assignments): 487 total assignments
++     - total_committee_vice_chair_all_assignments (Vice, Förste, Andre, Tredje)
++     - current_committee_vice_chair_all_assignments
++  
++  3. Suppleant (all variants with pattern matching): 15,291 total assignments
++     - total_suppleant_assignments (includes Suppleant: 14,757, Extra suppleant: 480, Personlig suppleant: 54)
++     - current_suppleant_assignments
++  
++  4. Statsminister (Prime Minister): 10 assignments
++     - total_statsminister_assignments
++     - current_statsminister_assignments
++  
++  5. Party Leader (Partiledare + Tillförordnad): 24 assignments (23 + 1)
++     - total_party_leader_assignments
++     - current_party_leader_assignments
++  
++  6. Party Secretary (Partisekreterare + Tillförordnad): 30 assignments (28 + 2)
++     - total_party_secretary_assignments
++     - current_party_secretary_assignments
++  
++  Implementation Details:
++  - Committee Chair/Vice Chair: Scoped to committee assignments with org_code IS NOT NULL 
++    AND assignment_type = 'uppdrag' (consistent with existing committee leadership columns)
++  - Suppleant: Uses pattern matching (~~* '%suppleant%') to capture all variants 
++    (consistent with existing committee substitute tracking)
++  
++  Rationale for Grouping:
++  - Follows database normalization: Group similar entities
++  - Reduces view complexity (avoids 34+ individual role columns)
++  - Vice chair hierarchy differences rarely analyzed separately
++  - Ministerial portfolio distinctions already handled via existing aggregated columns
++  - Easier maintenance and better query performance
++  - Enables identification of:
++    * People with many Suppleant roles (substitute positions)
++    * Party leadership (Partiledare, Partisekreterare)
++    * Prime Ministers (Statsminister)
++    * Committee leadership patterns (Chair vs Vice Chair distributions)
++-->
++
++<changeSet author=""intelligence-operative"" id=""add-grouped-role-tracking-1.46-001"" failOnError=""true"">
++    <comment>
++        Add grouped committee leadership role tracking to view_riksdagen_politician.
++        Adds 12 new columns organized into 6 role categories (total + current for each):
++        - Committee Chair (Ordförande only, committee context)
++        - Committee Vice Chairs (all levels grouped: Vice, Förste, Andre, Tredje, committee context)
++        - Suppleant (15,291 assignments - all variants via pattern matching: Suppleant, Extra suppleant, Personlig suppleant)
++        - Statsminister (10 assignments - Prime Minister tracking)
++        - Party Leader (24 assignments - Partiledare + Tillförordnad)
++        - Party Secretary (30 assignments - Partisekreterare + Tillförordnad)
++        
++        Database best practice: Grouped approach reduces column proliferation from 34+ 
++        individual role columns to 12 strategic columns covering key leadership positions.
++        
++        Fixes applied:
++        - Committee Chair/Vice Chair scoped to committee assignments (org_code IS NOT NULL, assignment_type = 'uppdrag')
++        - Suppleant uses pattern matching (~~* '%suppleant%') to include all variants (consistent with existing substitute tracking)",2025-12-22T22:54:32Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,AI Coding Agent,Resolved
+2230890434,https://api.github.com/repos/pnp/cli-microsoft365/pulls/6811,src/m365/entra/commands/administrativeunit/administrativeunit-list.spec.ts,Copilot,Copilot,Architectural Patterns,"Updated to use `commandOptionsSchema.parse()` instead of `safeParse()` for all test instances, following the established pattern in reference implementations. The change removes unnecessary intermediate variables since we're not checking parse success in tests. (commit d2ccec3)","@@ -85,9 +92,8 @@ describe(commands.ADMINISTRATIVEUNIT_LIST, () => {
+       throw 'Invalid request';
+     });
+ 
+-    await command.action(logger, {
+-      options: {}
+-    });
++    const parsedSchema = commandOptionsSchema.safeParse({});",2025-07-25T11:50:04Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,AI Coding Agent,Resolved
+2095737695,https://api.github.com/repos/MontrealAI/AGI-Alpha-Agent-v0/pulls/364,alpha_factory_v1/demos/era_of_experience/colab_era_of_experience.ipynb,Copilot,OpenAI_Codex,Architectural Patterns,"[nitpick] This hard-coded repo path may break if the repository folder is renamed or structured differently. Use a relative path (e.g., `Path().cwd() / ...`) or locate the sample dynamically.
+```suggestion
+        ""csv_path = Path(__file__).parent / 'macro_sentinel/offline_samples/stable_flows.csv'\n"",
+```","@@ -232,6 +232,22 @@
+         ""print(f'Yield curve spread: {spread:.2f} | {msg}')""
+       ]
+     },
++    {
++      ""cell_type"": ""code"",
++      ""execution_count"": null,
++      ""id"": ""supply-alpha-demo"",
++      ""metadata"": {},
++      ""outputs"": [],
++      ""source"": [
++        ""import pandas as pd\n"",
++        ""from pathlib import Path\n"",
++        ""csv_path = Path('AGI-Alpha-Agent-v0/alpha_factory_v1/demos/macro_sentinel/offline_samples/stable_flows.csv')\n"",",2025-05-19T13:38:22Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2686836478,https://api.github.com/repos/canonical/mir/pulls/4628,tests/mir_test_doubles/mock_x11.cpp,Copilot,Copilot,Duplication/Reuse,"This comment is redundant as the subsequent code clearly shows event type assignments. Consider removing it to reduce noise.
+```suggestion
+
+```","@@ -32,19 +32,15 @@ mtd::FakeX11Resources::FakeX11Resources()
+     : display{reinterpret_cast<Display*>(0x12345678)},
+       window{reinterpret_cast<Window>((long unsigned int)9876543210)}
+ {
+-    std::memset(&keypress_event_return, 0, sizeof(XEvent));
+-    std::memset(&key_release_event_return, 0, sizeof(XEvent));
+-    std::memset(&button_release_event_return, 0, sizeof(XEvent));
+-    std::memset(&expose_event_return, 0, sizeof(XEvent));
+-    std::memset(&focus_in_event_return, 0, sizeof(XEvent));
+-    std::memset(&focus_out_event_return, 0, sizeof(XEvent));
+-    std::memset(&vscroll_event_return, 0, sizeof(XEvent));
+-    std::memset(&motion_event_return, 0, sizeof(XEvent));
+-    std::memset(&enter_notify_event_return, 0, sizeof(XEvent));
+-    std::memset(&leave_notify_event_return, 0, sizeof(XEvent));
+-    std::memset(&visual_info, 0, sizeof(XVisualInfo));
+-    std::memset(&screen, 0, sizeof screen);
++    // XEvent members and screen/visual_info already zero-initialized in header with default member initializers
++    // Set the specific fields for screen and visual_info
++    screen.width = 2880;
++    screen.height = 1800;
++    screen.mwidth = 338;
++    screen.mheight = 270;
+     visual_info.red_mask = 0xFF0000;
++
++    // Set the specific type fields for each event",2026-01-13T15:07:57Z,False,Non-Design (Comment/Text Nitpick),N/A,Reviewer comment addresses English documentation wording or redundant inline comments rather than code structure.,Text Edit / Comment Removal,Human Developer,Resolved
+2321445465,https://api.github.com/repos/unoplatform/uno/pulls/21391,src/SamplesApp/UITests.Shared/Windows_UI_Xaml_Controls/TextBlockControl/TextBlock_ClipboardMethods.xaml.cs,Copilot,Copilot,General Design/Maintainability,"Event handler methods should follow WinUI naming conventions by including the sender and event args parameters, even if unused. For example, `SelectAllText(object sender, RoutedEventArgs e)`.
+```suggestion
+		private void ClearSelection(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+```","@@ -0,0 +1,131 @@
++﻿using System;
++using System.Threading.Tasks;
++using Uno.UI.Samples.Controls;
++using Windows.ApplicationModel.DataTransfer;
++using Microsoft.UI.Xaml.Controls;
++
++namespace UITests.Shared.Windows_UI_Xaml_Controls.TextBlockControl
++{
++	[Sample(""TextBlock"", IsManualTest = true)]
++	public sealed partial class TextBlock_ClipboardMethods : Page
++	{
++		public TextBlock_ClipboardMethods()
++		{
++			this.InitializeComponent();
++		}
++
++		private async void SelectAllText()
++		{
++			try
++			{
++				// Focus the text block so the selection is visually visible
++				TestTextBlock.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
++				await Task.Delay(100);
++				TestTextBlock.SelectAll();
++				UpdateLastCopyResult(""✅ SelectAll() called successfully"");
++			}
++			catch (Exception ex)
++			{
++				UpdateLastCopyResult($""❌ SelectAll() failed: {ex.Message}"");
++			}
++		}
++
++		private async void CopySelectionToClipboard()
++		{
++			try
++			{
++				TestTextBlock.CopySelectionToClipboard();
++				UpdateLastCopyResult(""✅ CopySelectionToClipboard() called successfully"");
++
++				// Verify the clipboard content
++				await Task.Delay(100); // Small delay to ensure clipboard is updated
++				await VerifyClipboardContentAsync();
++			}
++			catch (Exception ex)
++			{
++				UpdateLastCopyResult($""❌ CopySelectionToClipboard() failed: {ex.Message}"");
++			}
++		}
++
++		private void ClearSelection()",2025-09-04T09:37:18Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2159165325,https://api.github.com/repos/dotnet/maui/pulls/30020,src/Core/tests/UnitTests/Layouts/GridLayoutManagerTests.cs,PureWeen,Copilot,Abstraction & Extensibility,`MeasureAndArrangeFixed` needs to be fixed so that it takes into account the density we are testing against. Currently inside `GridLayoutManager` it's using one for the density when it needs to call GetHostedWindow. Instead of using `GetHostedWindow` can you add an internal interface to `IView` that will let us just retrieve `IWindow` from the `IGridLayout`? This will let you use NSubstitute to inject the density of 2.75 when calling RequestDisplayDensity on IWindow,"@@ -3235,5 +3227,372 @@ public void StarsAdjustWhenArrangeAndMeasureWidthDiffer(double widthConstraint,
+ 			AssertArranged(smallerView, new Rect(0, 0, expectedWidth, heightConstraint));
+ 			AssertArranged(largerView, new Rect(expectedWidth, 0, expectedWidth, heightConstraint));
+ 		}
++
++		[Fact]
++		[Category(GridStarSizing)]
++		public void DensityAwareStarsHandleScenario1_293Point4DpAtDensity2Point625()
++		{
++			// Test case from PR description: 293.4dp at density 2.625 = 770.175px across 3 columns
++			// This test verifies the improved behavior when density information is available
++			var grid = CreateGridLayout(columns: ""*, *, *"");
++
++			var view0 = CreateTestView(new Size(50, 50));
++			var view1 = CreateTestView(new Size(50, 50));
++			var view2 = CreateTestView(new Size(50, 50));
++
++			SubstituteChildren(grid, view0, view1, view2);
++			SetLocation(grid, view0, col: 0);
++			SetLocation(grid, view1, col: 1);
++			SetLocation(grid, view2, col: 2);
++
++			// Arrange at 293.4dp width - this should trigger improved distribution
++			var widthConstraint = 293.4;
++			var density = 2.625; // This represents what we expect the density to be for this test
++			
++			// Set up capture for arrange rectangles
++			Rect rect0 = default, rect1 = default, rect2 = default;
++			view0.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect0 = x.Arg<Rect>());
++			view1.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect1 = x.Arg<Rect>());
++			view2.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect2 = x.Arg<Rect>());
++			
++			MeasureAndArrangeFixed(grid, widthConstraint, 100);
++
++			// Note: Without actual density info from the window, the grid will use the fallback algorithm.
++			// This test validates that the layout works properly and can be validated for pixel precision
++			// when density information becomes available.
++
++			// Verify that all views are arranged properly and don't overflow
++			// Convert Dp values to pixels for verification (simulating what would happen with actual density)
++			var pixelX0 = rect0.X * density;
++			var pixelX1 = rect1.X * density;
++			var pixelX2 = rect2.X * density;
++			var pixelWidth0 = rect0.Width * density;
++			var pixelWidth1 = rect1.Width * density;
++			var pixelWidth2 = rect2.Width * density;
++
++			// Verify the columns are arranged sequentially
++			Assert.Equal(0, rect0.X, 1);
++			Assert.True(rect1.X >= rect0.X + rect0.Width - 0.01); // Allow for small rounding
++			Assert.True(rect2.X >= rect1.X + rect1.Width - 0.01);
++
++			// Verify total width doesn't exceed constraint
++			var totalWidth = rect0.Width + rect1.Width + rect2.Width;
++			Assert.True(totalWidth <= widthConstraint + 1, $""Total width {totalWidth} should not exceed constraint {widthConstraint}"");
++
++			// When density-aware distribution is available, pixel values should be close to integers
++			// This validates that the approach would work with actual density information
++			var pixelWidthRoundingError0 = Math.Abs(pixelWidth0 - Math.Round(pixelWidth0));
++			var pixelWidthRoundingError1 = Math.Abs(pixelWidth1 - Math.Round(pixelWidth1));
++			var pixelWidthRoundingError2 = Math.Abs(pixelWidth2 - Math.Round(pixelWidth2));
++			
++			// At density 2.625, the rounding errors should be reasonable
++			Assert.True(pixelWidthRoundingError0 <= 0.6, $""Pixel width 0 rounding error {pixelWidthRoundingError0} should be reasonable"");
++			Assert.True(pixelWidthRoundingError1 <= 0.6, $""Pixel width 1 rounding error {pixelWidthRoundingError1} should be reasonable"");
++			Assert.True(pixelWidthRoundingError2 <= 0.6, $""Pixel width 2 rounding error {pixelWidthRoundingError2} should be reasonable"");
++		}
++
++		[Fact]
++		[Category(GridStarSizing)]
++		public void DensityAwareStarsHandleScenario2_290DpAtDensity3Point0()
++		{
++			// Test case from PR description: 290dp across 3 columns at density 3.0 (perfect case)
++			var grid = CreateGridLayout(columns: ""*, *, *"");
++
++			var view0 = CreateTestView(new Size(50, 50));
++			var view1 = CreateTestView(new Size(50, 50));
++			var view2 = CreateTestView(new Size(50, 50));
++
++			SubstituteChildren(grid, view0, view1, view2);
++			SetLocation(grid, view0, col: 0);
++			SetLocation(grid, view1, col: 1);
++			SetLocation(grid, view2, col: 2);
++
++			// Arrange at 290dp width
++			var widthConstraint = 290.0;
++			var density = 3.0; // This represents what we expect the density to be for this test
++			
++			// Set up capture for arrange rectangles
++			Rect rect0 = default, rect1 = default, rect2 = default;
++			view0.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect0 = x.Arg<Rect>());
++			view1.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect1 = x.Arg<Rect>());
++			view2.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect2 = x.Arg<Rect>());
++			
++			MeasureAndArrangeFixed(grid, widthConstraint, 100);
++
++			// Convert Dp values to pixels for verification
++			var pixelWidth0 = rect0.Width * density;
++			var pixelWidth1 = rect1.Width * density;
++			var pixelWidth2 = rect2.Width * density;
++
++			// Verify that columns are distributed without overflow
++			var totalWidth = rect0.Width + rect1.Width + rect2.Width;
++			Assert.True(totalWidth <= widthConstraint + 1, $""Total width {totalWidth} should not exceed constraint {widthConstraint}"");
++			Assert.True(totalWidth >= widthConstraint - 1, $""Total width {totalWidth} should be close to constraint {widthConstraint}"");
++
++			// In this perfect division case (290dp at 3.0 density = 870px, 870/3 = 290px each),
++			// the pixel values should be very close to integers when density-aware distribution is available
++			var pixelWidthRoundingError0 = Math.Abs(pixelWidth0 - Math.Round(pixelWidth0));
++			var pixelWidthRoundingError1 = Math.Abs(pixelWidth1 - Math.Round(pixelWidth1));
++			var pixelWidthRoundingError2 = Math.Abs(pixelWidth2 - Math.Round(pixelWidth2));
++			
++			Assert.True(pixelWidthRoundingError0 <= 0.6, $""Pixel width 0 rounding error {pixelWidthRoundingError0} should be reasonable"");
++			Assert.True(pixelWidthRoundingError1 <= 0.6, $""Pixel width 1 rounding error {pixelWidthRoundingError1} should be reasonable"");
++			Assert.True(pixelWidthRoundingError2 <= 0.6, $""Pixel width 2 rounding error {pixelWidthRoundingError2} should be reasonable"");
++		}
++
++		[Fact]
++		[Category(GridStarSizing)]
++		public void DensityAwareStarsHandleScenario3_300DpAtDensity2Point625()
++		{
++			// Test case from PR description: 300dp across 4 columns at density 2.625
++			var grid = CreateGridLayout(columns: ""*, *, *, *"");
++
++			var view0 = CreateTestView(new Size(30, 50));
++			var view1 = CreateTestView(new Size(30, 50));
++			var view2 = CreateTestView(new Size(30, 50));
++			var view3 = CreateTestView(new Size(30, 50));
++
++			SubstituteChildren(grid, view0, view1, view2, view3);
++			SetLocation(grid, view0, col: 0);
++			SetLocation(grid, view1, col: 1);
++			SetLocation(grid, view2, col: 2);
++			SetLocation(grid, view3, col: 3);
++
++			// Arrange at 300dp width
++			var widthConstraint = 300.0;
++			var density = 2.625; // This represents what we expect the density to be for this test
++			
++			// Set up capture for arrange rectangles
++			Rect rect0 = default, rect1 = default, rect2 = default, rect3 = default;
++			view0.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect0 = x.Arg<Rect>());
++			view1.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect1 = x.Arg<Rect>());
++			view2.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect2 = x.Arg<Rect>());
++			view3.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect3 = x.Arg<Rect>());
++			
++			MeasureAndArrangeFixed(grid, widthConstraint, 100);
++
++			// Verify that 4 columns are distributed properly
++			// Verify proper sequential layout
++			Assert.Equal(0, rect0.X, 1);
++			Assert.True(rect1.X >= rect0.X + rect0.Width - 0.01);
++			Assert.True(rect2.X >= rect1.X + rect1.Width - 0.01);
++			Assert.True(rect3.X >= rect2.X + rect2.Width - 0.01);
++
++			// Verify total width doesn't overflow
++			var totalWidth = rect0.Width + rect1.Width + rect2.Width + rect3.Width;
++			Assert.True(totalWidth <= widthConstraint + 1, $""Total width {totalWidth} should not exceed constraint {widthConstraint}"");
++
++			// Convert Dp values to pixels for verification
++			var pixelWidth0 = rect0.Width * density;
++			var pixelWidth1 = rect1.Width * density;
++			var pixelWidth2 = rect2.Width * density;
++			var pixelWidth3 = rect3.Width * density;
++
++			// At density 2.625, when density-aware distribution is available, pixel values should be close to integers
++			var pixelWidthRoundingError0 = Math.Abs(pixelWidth0 - Math.Round(pixelWidth0));
++			var pixelWidthRoundingError1 = Math.Abs(pixelWidth1 - Math.Round(pixelWidth1));
++			var pixelWidthRoundingError2 = Math.Abs(pixelWidth2 - Math.Round(pixelWidth2));
++			var pixelWidthRoundingError3 = Math.Abs(pixelWidth3 - Math.Round(pixelWidth3));
++			
++			Assert.True(pixelWidthRoundingError0 <= 0.6, $""Pixel width 0 rounding error {pixelWidthRoundingError0} should be reasonable"");
++			Assert.True(pixelWidthRoundingError1 <= 0.6, $""Pixel width 1 rounding error {pixelWidthRoundingError1} should be reasonable"");
++			Assert.True(pixelWidthRoundingError2 <= 0.6, $""Pixel width 2 rounding error {pixelWidthRoundingError2} should be reasonable"");
++			Assert.True(pixelWidthRoundingError3 <= 0.6, $""Pixel width 3 rounding error {pixelWidthRoundingError3} should be reasonable"");
++		}
++
++		[Fact]
++		[Category(GridStarSizing)]
++		public void DensityAwareStarsHandleWeightedSizing()
++		{
++			// Test weighted star sizing: 2*, 1*, 2* 
++			var grid = CreateGridLayout(columns: ""2*, *, 2*"");
++
++			var view0 = CreateTestView(new Size(40, 50));
++			var view1 = CreateTestView(new Size(20, 50));
++			var view2 = CreateTestView(new Size(40, 50));
++
++			SubstituteChildren(grid, view0, view1, view2);
++			SetLocation(grid, view0, col: 0);
++			SetLocation(grid, view1, col: 1);
++			SetLocation(grid, view2, col: 2);
++
++			var widthConstraint = 250.0;
++			var density = 2.0; // This represents what we expect the density to be for this test
++			
++			// Set up capture for arrange rectangles
++			Rect rect0 = default, rect1 = default, rect2 = default;
++			view0.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect0 = x.Arg<Rect>());
++			view1.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect1 = x.Arg<Rect>());
++			view2.When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rect2 = x.Arg<Rect>());
++			
++			MeasureAndArrangeFixed(grid, widthConstraint, 100);
++
++			// Verify weighted distribution: first and third columns should be larger than middle
++			// First and third columns (2*) should be approximately twice the width of the middle column (1*)
++			Assert.True(rect0.Width > rect1.Width * 1.5, $""First column ({rect0.Width}) should be larger than middle column ({rect1.Width})"");
++			Assert.True(rect2.Width > rect1.Width * 1.5, $""Third column ({rect2.Width}) should be larger than middle column ({rect1.Width})"");
++
++			// First and third columns should be approximately equal
++			Assert.Equal(rect0.Width, rect2.Width, 1);
++
++			// Total should not exceed constraint
++			var totalWidth = rect0.Width + rect1.Width + rect2.Width;
++			Assert.True(totalWidth <= widthConstraint + 1, $""Total width {totalWidth} should not exceed constraint {widthConstraint}"");
++
++			// Convert Dp values to pixels for verification
++			var pixelWidth0 = rect0.Width * density;
++			var pixelWidth1 = rect1.Width * density;
++			var pixelWidth2 = rect2.Width * density;
++
++			// When density-aware distribution is available, pixel values should be close to integers
++			var pixelWidthRoundingError0 = Math.Abs(pixelWidth0 - Math.Round(pixelWidth0));
++			var pixelWidthRoundingError1 = Math.Abs(pixelWidth1 - Math.Round(pixelWidth1));
++			var pixelWidthRoundingError2 = Math.Abs(pixelWidth2 - Math.Round(pixelWidth2));
++			
++			Assert.True(pixelWidthRoundingError0 <= 0.6, $""Pixel width 0 rounding error {pixelWidthRoundingError0} should be reasonable"");
++			Assert.True(pixelWidthRoundingError1 <= 0.6, $""Pixel width 1 rounding error {pixelWidthRoundingError1} should be reasonable"");
++			Assert.True(pixelWidthRoundingError2 <= 0.6, $""Pixel width 2 rounding error {pixelWidthRoundingError2} should be reasonable"");
++		}
++
++		[Fact]
++		[Category(GridStarSizing)]
++		public void StarLayoutPreventsOverflow()
++		{
++			// Test that demonstrates the problem being solved: ensuring no overflow occurs
++			var grid = CreateGridLayout(columns: ""*, *, *, *, *""); // 5 equal columns
++
++			var views = new IView[5];
++			for (int i = 0; i < 5; i++)
++			{
++				views[i] = CreateTestView(new Size(20, 50));
++				SetLocation(grid, views[i], col: i);
++			}
++			SubstituteChildren(grid, views);
++
++			// Use a constraint that would cause rounding issues
++			var widthConstraint = 333.33; // Doesn't divide evenly by 5
++			
++			// Set up capture for all view rectangles
++			var rects = new Rect[5];
++			for (int i = 0; i < 5; i++)
++			{
++				int index = i; // Capture loop variable for closure
++				views[i].When(x => x.Arrange(Arg.Any<Rect>())).Do(x => rects[index] = x.Arg<Rect>());
++			}
++			
++			MeasureAndArrangeFixed(grid, widthConstraint, 100);
++
++			// Collect all arranged rects
++
++			// Verify sequential layout
++			for (int i = 1; i < 5; i++)
++			{
++				Assert.True(rects[i].X >= rects[i - 1].X + rects[i - 1].Width - 1, $""Column {i} should start after column {i - 1}"");
++			}
++
++			// Most importantly: verify no overflow
++			var totalWidth = rects.Sum(r => r.Width);
++			Assert.True(totalWidth <= widthConstraint + 1, $""Total width {totalWidth} should not exceed constraint {widthConstraint}"");
++
++			// Verify all space is used (no significant gaps)
++			Assert.True(totalWidth >= widthConstraint - 5, $""Total width {totalWidth} should be close to constraint {widthConstraint}"");
++		}
++
++		[Theory]
++		[InlineData(1)]
++		[InlineData(2)]
++		[InlineData(3)]
++		[InlineData(4)]
++		[InlineData(5)]
++		[InlineData(6)]
++		[InlineData(7)]
++		[InlineData(8)]
++		[InlineData(9)]
++		[InlineData(10)]
++		[InlineData(11)]
++		[Category(GridStarSizing)]
++		public void ArrangesContentWithoutOverlapAndWithProperSize(int columnCount)
++		{
++			// Recreated from device test with density 2.75
++			// This test verifies that grid columns arrange without overlap at specific density
++			var columnDefs = string.Join("","", Enumerable.Repeat(""*"", columnCount));
++			var grid = CreateGridLayout(columns: columnDefs);
++
++			// Create views for each column (similar to the original test)
++			var views = new IView[columnCount];
++			for (int i = 0; i < columnCount; i++)
++			{
++				views[i] = CreateTestView(new Size(20, 50)); // Similar to ContentView with HeightRequest 50
++				SetLocation(grid, views[i], col: i);
++			}
++			SubstituteChildren(grid, views);
++
++			// Use width of 293 as specified in the original test
++			var widthConstraint = 293.0;
++			var density = 2.75; // This represents what we expect the density to be for this test
++
++			// Set up capture for all view rectangles  
++			var arrangedRects = new Rect[columnCount];
++			for (int i = 0; i < columnCount; i++)
++			{
++				int index = i; // Capture loop variable for closure
++				views[i].When(x => x.Arrange(Arg.Any<Rect>())).Do(x => arrangedRects[index] = x.Arg<Rect>());
++			}
++
++			MeasureAndArrangeFixed(grid, widthConstraint, 50);",2025-06-20T14:55:36Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,AI Coding Agent,Resolved
+2678513642,https://api.github.com/repos/cline/cline/pulls/8506,src/core/api/providers/gemini.ts,Copilot,Claude_Code,Architectural Patterns,"The model ID comparison uses hardcoded string literals which could become brittle as new model versions are released. Consider extracting these into constants or using a pattern-matching approach (e.g., checking if modelId starts with 'gemini-2.5-') to make this more maintainable.","@@ -114,7 +114,18 @@ export class GeminiHandler implements ApiHandler {
+ 		const contents = messages.map(convertAnthropicMessageToGemini)
+ 
+ 		// Configure thinking budget if supported
+-		const _thinkingBudget = this.options.thinkingBudgetTokens ?? 0
++		// Default behavior based on model: https://ai.google.dev/gemini-api/docs/thinking#supported-models
++		let _thinkingBudget: number
++		if (this.options.thinkingBudgetTokens !== undefined) {
++			_thinkingBudget = this.options.thinkingBudgetTokens
++		} else {
++			// Gemini 2.5 Pro and Flash require dynamic thinking by default (thinkingBudget of 0 is invalid)
++			if (modelId === ""gemini-2.5-pro"" || modelId === ""gemini-2.5-flash"") {",2026-01-10T09:55:02Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2971880582,https://api.github.com/repos/wirechat/wirechat/pulls/168,resources/views/livewire/chat/partials/header.blade.php,Copilot,Copilot,Duplication/Reuse,The SVG markup for the return icon is duplicated in both branches of the widget/non-widget conditional. Consider extracting the icon into a shared partial/component (or render it once and only vary the wrapper element) to avoid future divergence.,"@@ -10,21 +10,29 @@ class=""w-full   sticky inset-x-0 flex pb-[5px] pt-[7px] top-0 z-10 bg-[var(--wc-
+     <div class=""  flex  w-full items-center   px-2 py-2   lg:px-4 gap-2 md:gap-5 "">
+ 
+         {{-- Return --}}
+-        <a @if ($this->isWidget()) @click=""$dispatch('close-chat',{conversation: {{json_encode($conversation->id)}} })""
+-            dusk=""return_to_home_button_dispatch""
++        @if ($this->isWidget())
++            <button
++                @click=""$dispatch('close-chat',{conversation: {{json_encode($conversation->id)}} })""
++                dusk=""return_to_home_button_dispatch""
++                class=""shrink-0 cursor-pointer dark:text-white""
++                id=""chatReturn"">
++                <svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" viewBox=""0 0 24 24"" stroke-width=""1.6""
++                    stroke=""currentColor"" class=""w-6 h-6"">
++                    <path stroke-linecap=""round"" stroke-linejoin=""round"" d=""M15.75 19.5L8.25 12l7.5-7.5"" />
++                </svg>
++            </button>
+         @else
+-            wire:navigate
+-            href=""{{ $this->panel()->chatsRoute() }}""
+-            dusk=""return_to_home_button_link"" @endif
+-            @class([
+-                'shrink-0  cursor-pointer dark:text-white',
+-                'lg:hidden' => !$this->isWidget(),
+-            ]) id=""chatReturn"">
+-            <svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" viewBox=""0 0 24 24"" stroke-width=""1.6""
+-                stroke=""currentColor"" class=""w-6 h-6"">
+-                <path stroke-linecap=""round"" stroke-linejoin=""round"" d=""M15.75 19.5L8.25 12l7.5-7.5"" />
+-            </svg>
+-        </a>
++            <a wire:navigate
++                href=""{{ $this->panel()->chatsRoute() }}""
++                dusk=""return_to_home_button_link""
++                class=""shrink-0 cursor-pointer dark:text-white lg:hidden""
++                id=""chatReturn"">
++                <svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" viewBox=""0 0 24 24"" stroke-width=""1.6""
++                    stroke=""currentColor"" class=""w-6 h-6"">
++                    <path stroke-linecap=""round"" stroke-linejoin=""round"" d=""M15.75 19.5L8.25 12l7.5-7.5"" />
++                </svg>
++            </a>",2026-03-22T18:25:08Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,Human Developer,Resolved
+2849935450,https://api.github.com/repos/dotnet/runtime/pulls/124817,src/native/managed/cdac/Microsoft.Diagnostics.DataContractReader.Abstractions/Contracts/IThread.cs,Copilot,Copilot,Architectural Patterns,"Done in fa4b867 — replaced `ThreadAllocData` record struct with `out long allocBytes, out long allocBytesLoh` parameters on `GetThreadAllocContext`, matching the pattern used by `GetStackLimitData`. Updated Thread_1 implementation, SOSDacImpl caller, and all tests.","@@ -41,13 +41,18 @@ public record struct ThreadData(
+     TargetPointer LastThrownObjectHandle,
+     TargetPointer NextThread);
+ 
++public record struct ThreadAllocData(",2026-02-24T22:53:30Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2530449935,https://api.github.com/repos/SemiAnalysisAI/InferenceX/pulls/237,utils/test_process_result.py,Copilot,Copilot,Duplication/Reuse,"The `sys` module is imported twice - once at the top of the file (line 4) and again here (line 149). Remove this redundant import statement.
+```suggestion
+
+```","@@ -0,0 +1,215 @@
++import pytest
++import json
++import os
++import sys
++from pathlib import Path
++from unittest.mock import patch, mock_open
++
++# Import the script as a module would be tricky since it's a script
++# Instead we'll test by setting env vars and running it
++
++
++def create_mock_result_file(tmp_path):
++    """"""Create a mock result JSON file.""""""
++    result_data = {
++        ""max_concurrency"": 10,
++        ""model_id"": ""test-model"",
++        ""total_token_throughput"": 1000.0,
++        ""output_throughput"": 400.0,
++        ""ttft_ms"": 50.0,
++        ""tpot_ms"": 20.0
++    }
++    result_file = tmp_path / ""test_result.json""
++    with open(result_file, 'w') as f:
++        json.dump(result_data, f)
++    return str(result_file.stem)
++
++
++def test_disagg_true_when_both_env_vars_set(tmp_path, monkeypatch):
++    """"""Test that disagg=true when both PREFILL_GPUS and DECODE_GPUS are set.""""""
++    # Create mock result file
++    result_filename = create_mock_result_file(tmp_path)
++    
++    # Set environment variables
++    monkeypatch.setenv('RUNNER_TYPE', 'h200')
++    monkeypatch.setenv('TP', '8')
++    monkeypatch.setenv('EP_SIZE', '1')
++    monkeypatch.setenv('PREFILL_GPUS', '4')
++    monkeypatch.setenv('DECODE_GPUS', '4')
++    monkeypatch.setenv('DP_ATTENTION', 'false')
++    monkeypatch.setenv('RESULT_FILENAME', 'test_result')
++    monkeypatch.setenv('FRAMEWORK', 'vllm')
++    monkeypatch.setenv('PRECISION', 'fp8')
++    
++    # Change to tmp_path directory
++    monkeypatch.chdir(tmp_path)
++    
++    # Import and run the script
++    import importlib.util
++    spec = importlib.util.spec_from_file_location(
++        ""process_result"",
++        ""/home/runner/work/InferenceMAX/InferenceMAX/utils/process_result.py""
++    )
++    module = importlib.util.module_from_spec(spec)
++    
++    # Capture stdout
++    from io import StringIO
++    import sys
++    old_stdout = sys.stdout
++    sys.stdout = StringIO()
++    
++    try:
++        spec.loader.exec_module(module)
++        output = sys.stdout.getvalue()
++        data = json.loads(output)
++        
++        # Check that disagg is true
++        assert data['disagg'] == True
++        # Check that num_prefill_gpu and num_decode_gpu are present
++        assert data['num_prefill_gpu'] == 4
++        assert data['num_decode_gpu'] == 4
++    finally:
++        sys.stdout = old_stdout
++
++
++def test_disagg_false_when_prefill_gpus_not_set(tmp_path, monkeypatch):
++    """"""Test that disagg=false when PREFILL_GPUS is not set.""""""
++    # Create mock result file
++    result_filename = create_mock_result_file(tmp_path)
++    
++    # Set environment variables (without PREFILL_GPUS)
++    monkeypatch.setenv('RUNNER_TYPE', 'h200')
++    monkeypatch.setenv('TP', '8')
++    monkeypatch.setenv('EP_SIZE', '1')
++    monkeypatch.setenv('DECODE_GPUS', '4')
++    monkeypatch.setenv('DP_ATTENTION', 'false')
++    monkeypatch.setenv('RESULT_FILENAME', 'test_result')
++    monkeypatch.setenv('FRAMEWORK', 'vllm')
++    monkeypatch.setenv('PRECISION', 'fp8')
++    
++    # Change to tmp_path directory
++    monkeypatch.chdir(tmp_path)
++    
++    # Import and run the script
++    import importlib.util
++    spec = importlib.util.spec_from_file_location(
++        ""process_result"",
++        ""/home/runner/work/InferenceMAX/InferenceMAX/utils/process_result.py""
++    )
++    module = importlib.util.module_from_spec(spec)
++    
++    # Capture stdout
++    from io import StringIO
++    import sys
++    old_stdout = sys.stdout
++    sys.stdout = StringIO()
++    
++    try:
++        spec.loader.exec_module(module)
++        output = sys.stdout.getvalue()
++        data = json.loads(output)
++        
++        # Check that disagg is false
++        assert data['disagg'] == False
++        # Check that num_prefill_gpu and num_decode_gpu are NOT present
++        assert 'num_prefill_gpu' not in data
++        assert 'num_decode_gpu' not in data
++    finally:
++        sys.stdout = old_stdout
++
++
++def test_disagg_false_when_decode_gpus_not_set(tmp_path, monkeypatch):
++    """"""Test that disagg=false when DECODE_GPUS is not set.""""""
++    # Create mock result file
++    result_filename = create_mock_result_file(tmp_path)
++    
++    # Set environment variables (without DECODE_GPUS)
++    monkeypatch.setenv('RUNNER_TYPE', 'h200')
++    monkeypatch.setenv('TP', '8')
++    monkeypatch.setenv('EP_SIZE', '1')
++    monkeypatch.setenv('PREFILL_GPUS', '4')
++    monkeypatch.setenv('DP_ATTENTION', 'false')
++    monkeypatch.setenv('RESULT_FILENAME', 'test_result')
++    monkeypatch.setenv('FRAMEWORK', 'vllm')
++    monkeypatch.setenv('PRECISION', 'fp8')
++    
++    # Change to tmp_path directory
++    monkeypatch.chdir(tmp_path)
++    
++    # Import and run the script
++    import importlib.util
++    spec = importlib.util.spec_from_file_location(
++        ""process_result"",
++        ""/home/runner/work/InferenceMAX/InferenceMAX/utils/process_result.py""
++    )
++    module = importlib.util.module_from_spec(spec)
++    
++    # Capture stdout
++    from io import StringIO
++    import sys",2025-11-15T23:22:17Z,True,Code Redundancy / Duplicate Declaration,Localized Context Truncation,Agent declared redundant variables/imports without scanning existing declarations in file scope.,In-place Refactoring (Remove Duplicate),Human Developer,Resolved
+2391256317,https://api.github.com/repos/Azure/azure-sdk-for-java/pulls/46646,sdk/storage/azure-storage-blob/src/main/java/com/azure/storage/blob/specialized/BlobAsyncClientBase.java,Copilot,Copilot,Duplication/Reuse,"Fixed the variable scope error by removing the duplicate `processedStream` declaration. The variable is now declared once at the beginning of the stream processing logic and reused when structured message validation is enabled, eliminating the ""Variable 'processedStream' is already defined in the scope"" compilation error. Commit: 2a7155f","@@ -1473,17 +1476,51 @@ Mono<BlobDownloadAsyncResponse> downloadStreamWithResponse(BlobRange range, Down
+ 
+                     try {
+                         return downloadRange(new BlobRange(initialOffset + offset, newCount), finalRequestConditions,
+-                            eTag, getMD5, context);
++                            eTag, finalGetMD5, context);
+                     } catch (Exception e) {
+                         return Mono.error(e);
+                     }
+                 };
+ 
+-                // Create a new response with the processed stream (which may include structured message decoding)
+-                // Use the same approach as the original method to maintain consistency
+-                return BlobDownloadAsyncResponseConstructorProxy.create(
+-                    new ResponseBase<>(response.getRequest(), response.getStatusCode(), response.getHeaders(), 
+-                        processedStream, blobDownloadHeaders), onDownloadErrorResume, finalOptions);
++                // Apply structured message decoding if enabled - this allows both MD5 and structured message to coexist
++                if (contentValidationOptions != null && contentValidationOptions.isStructuredMessageValidationEnabled()) {
++                    // Use the content length from headers to determine expected length for structured message decoding
++                    Long contentLength = blobDownloadHeaders.getContentLength();
++                    Flux<ByteBuffer> processedStream = StructuredMessageDecodingStream.wrapStreamIfNeeded(response.getValue(), contentLength, contentValidationOptions);",2025-09-30T12:34:52Z,True,Code Redundancy / Duplicate Declaration,Localized Context Truncation,Agent declared redundant variables/imports without scanning existing declarations in file scope.,In-place Refactoring (Remove Duplicate),AI Coding Agent,Resolved
+2607853101,https://api.github.com/repos/benbalter/benbalter.github.com/pulls/1295,sass/_retlab.scss,Copilot,Copilot,General Design/Maintainability,"The selector `body.index .content .row a` is overly specific with 4 levels of nesting. Consider using a more targeted class-based selector instead. This would improve maintainability and reduce specificity, making it easier to override if needed in the future.
+```suggestion
+// NOTE: Add the `.post-list-link` class to anchor tags in the index/home page template for this style to apply.
+.post-list-link {
+```","@@ -104,4 +104,36 @@ nav .border-top .link-secondary {
+             color: var(--bs-gray-300) !important;
+         }
+     }
++}
++
++// Reduce text sizes for better readability
++.navbar-brand {
++    font-size: 1.125rem; // Reduced from default ~1.25rem
++}
++
++.navbar .nav-link {
++    font-size: 0.9375rem; // Reduced from default 1rem
++}
++
++.navbar-text {
++    font-size: 0.875rem; // Reduced from default 1rem
++}
++
++footer .nav-link {
++    font-size: 0.875rem; // Reduced from default 1rem
++}
++
++// Reduce post list text sizes (for index/home page)
++body.index .content .row a {",2025-12-10T18:53:58Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,Human Developer,Resolved
+2484806195,https://api.github.com/repos/github/gh-aw/pulls/2977,pkg/workflow/create_issue_backward_compat_test.go,Copilot,Copilot,Duplication/Reuse,Duplicate `on:` field in YAML frontmatter. The simple `on: push` at line 21 conflicts with the object-format `on:` at line 23. Remove line 21 as the object format at line 23 provides the actual trigger configuration needed for this test.,"@@ -18,6 +18,7 @@ func TestCreateIssueBackwardCompatibility(t *testing.T) {
+ 
+ 	// Test with an existing workflow format (no assignees)
+ 	testContent := `---
++on: push
+ name: Legacy Workflow Format
+ on:
+   issues:",2025-11-02T13:06:44Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,Human Developer,Resolved
+2721996146,https://api.github.com/repos/microsoft/vscode/pulls/289952,.github/instructions/chat.instructions.md,Copilot,Copilot,Duplication/Reuse,"The phrase ""in `when` conditions to conditionally show/hide UI elements"" is slightly redundant; consider removing ""conditionally"" so it reads more clearly (for example, ""in `when` conditions to show/hide UI elements"").
+```suggestion
+- **UI Hiding**: Use `ChatContextKeys.enabled` in `when` conditions to show/hide UI elements (commands, views, menu items, etc.)
+```","@@ -6,3 +6,16 @@ description: Chat feature area coding guidelines
+ 
+ - When adding a new chat/AI feature like a new surface where chat or agents appear, a new AI command, etc, these features must not show up for users when they've disabled AI features. The best way to do this is to gate the feature on the context key `ChatContextKeys.enabled` via a when clause.
+ - When doing a code review for code that adds an AI feature, please ensure that the feature is properly gated.
++
++### Hiding AI Features When Disabled
++
++When surfacing a UI AI feature, ensure the feature hides when `chat.disableAIFeatures` is set:
++
++- **UI Hiding**: Use `ChatContextKeys.enabled` in `when` conditions to conditionally show/hide UI elements (commands, views, menu items, etc.)",2026-01-23T16:38:31Z,False,Non-Design (Comment/Text Nitpick),N/A,Reviewer comment addresses English documentation wording or redundant inline comments rather than code structure.,Text Edit / Comment Removal,Human Developer,Resolved
+2327842136,https://api.github.com/repos/sniffy/sniffy/pulls/596,sniffy-module-tls/pom.xml,Copilot,Copilot,Architectural Patterns,"[nitpick] The property name `sonatypeOssDistMgmtSnapshotsUrl` is misleading after the migration. Consider renaming it to `centralSnapshotsUrl` or `centralDistMgmtSnapshotsUrl` to better reflect the new Central Repository infrastructure.
+```suggestion
+        <centralSnapshotsUrl>https://s01.oss.sonatype.org/content/repositories/snapshots</centralSnapshotsUrl>
+```","@@ -17,7 +17,7 @@
+ 
+     <properties>
+         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+-        <sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/</sonatypeOssDistMgmtSnapshotsUrl>
++        <sonatypeOssDistMgmtSnapshotsUrl>https://s01.oss.sonatype.org/content/repositories/snapshots</sonatypeOssDistMgmtSnapshotsUrl>",2025-09-06T16:20:47Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2678607517,https://api.github.com/repos/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager/pulls/426,src/iPhoto/gui/ui/widgets/gallery_grid_view.py,Copilot,Google_Jules,Architectural Patterns,"Inconsistent indentation detected. The line uses an extra space before 'if', which breaks the standard 4-space indentation pattern used elsewhere in the file.
+```suggestion
+            if self._selection_shim:
+```","@@ -1,189 +1,459 @@
+-""""""Pre-configured grid view for the gallery layout.""""""
++""""""QML-based gallery grid view replacement.""""""
+ 
+ from __future__ import annotations
+ 
+-from OpenGL import GL as gl
+-from PySide6.QtCore import QEvent, QSize, Qt
+-from PySide6.QtGui import QPaintEvent, QPalette, QSurfaceFormat, QColor
+-from PySide6.QtOpenGLWidgets import QOpenGLWidget
+-from PySide6.QtWidgets import QAbstractItemView, QListView
++import logging
++from pathlib import Path
++from typing import Callable, List, Optional, Union
++
++from PySide6.QtCore import (
++    QModelIndex,
++    QObject,
++    QPoint,
++    Qt,
++    QUrl,
++    QRect,
++    Signal,
++    Slot,
++    QItemSelection,
++    QItemSelectionModel,
++    QEvent,
++)
++from PySide6.QtGui import QColor, QDragEnterEvent, QDragMoveEvent, QDropEvent, QSurfaceFormat
++from PySide6.QtQuickWidgets import QQuickWidget
++from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
++
++from ..models.roles import Roles
++from ..qml.thumbnail_provider import ThumbnailProvider
++
++logger = logging.getLogger(__name__)
++
++
++class SelectionModelShim(QObject):
++    """"""
++    Mimics QItemSelectionModel API but operates on the AssetListModel's IS_SELECTED role.
++    This allows existing controllers to interact with the selection without knowing
++    about the underlying QML/Model architecture.
++    """"""
++
++    selectionChanged = Signal(QItemSelection, QItemSelection)
++    currentChanged = Signal(QModelIndex, QModelIndex)
++
++    def __init__(self, model, parent=None):
++        super().__init__(parent)
++        self._model = model
++        self._selection_cache: Optional[List[QModelIndex]] = None
++        self._current_index_cache: Optional[QModelIndex] = None
++
++        # Connect signals to invalidate cache
++        self._model.dataChanged.connect(self._on_data_changed)
++        self._model.rowsInserted.connect(self._invalidate_cache)
++        self._model.rowsRemoved.connect(self._invalidate_cache)
++        self._model.modelReset.connect(self._invalidate_cache)
++        self._model.layoutChanged.connect(self._invalidate_cache)
++
++    @Slot()
++    def _invalidate_cache(self) -> None:
++        self._selection_cache = None
++        self._current_index_cache = None
++
++    @Slot(QModelIndex, QModelIndex, list)
++    def _on_data_changed(self, top: QModelIndex, bottom: QModelIndex, roles: List[int] = []) -> None:
++        if not roles or Roles.IS_SELECTED in roles:
++            self._selection_cache = None
++        if not roles or Roles.IS_CURRENT in roles:
++            self._current_index_cache = None
++
++    def isSelected(self, index: QModelIndex) -> bool:
++        if not index.isValid():
++            return False
++        return self._model.data(index, Roles.IS_SELECTED)
++
++    def select(
++        self,
++        selection: Union[QModelIndex, QItemSelection],
++        command: QItemSelectionModel.SelectionFlag,
++    ) -> None:
++        """"""
++        Apply selection changes to the model and emit signals.
++        """"""
++        if isinstance(selection, QModelIndex):
++            indexes = [selection]
++        elif isinstance(selection, QItemSelection):
++            indexes = selection.indexes()
++        else:
++            return
+ 
+-from ..styles import modern_scrollbar_style
+-from .asset_grid import AssetGrid
++        is_clear = command & QItemSelectionModel.SelectionFlag.Clear
++        is_select = command & QItemSelectionModel.SelectionFlag.Select
++        is_deselect = command & QItemSelectionModel.SelectionFlag.Deselect
++        is_toggle = command & QItemSelectionModel.SelectionFlag.Toggle
++
++        # Track changes for signal emission
++        selected_indexes = []
++        deselected_indexes = []
++
++        # If ClearAndSelect, first clear everything
++        if command & QItemSelectionModel.SelectionFlag.ClearAndSelect:
++            # We need to find what will be deselected
++            # Use row numbers for robust comparison
++            rows_to_keep = {ix.row() for ix in indexes if ix.isValid()}
++            row_count = self._model.rowCount()
++            for i in range(row_count):
++                idx = self._model.index(i, 0)
++                if self._model.data(idx, Roles.IS_SELECTED):
++                    if idx.row() not in rows_to_keep: # Unless we are re-selecting it later
++                        self._model.setData(idx, False, Roles.IS_SELECTED)
++                        deselected_indexes.append(idx)
++            is_select = True
++
++        for index in indexes:
++            if not index.isValid():
++                continue
++
++            current = self._model.data(index, Roles.IS_SELECTED)
++            new_state = current
++
++            if is_toggle:
++                new_state = not current
++            elif is_select:
++                new_state = True
++            elif is_deselect:
++                new_state = False
++
++            if current != new_state:
++                self._model.setData(index, new_state, Roles.IS_SELECTED)
++                if new_state:
++                    selected_indexes.append(index)
++                else:
++                    deselected_indexes.append(index)
++
++        # Emit signal if changes occurred
++        if selected_indexes or deselected_indexes:
++            # Convert lists to QItemSelection
++            # Since we have scattered indexes, we just add them one by one or create ranges?
++            # QItemSelection from list of indexes:
++            sel_new = QItemSelection()
++            for idx in selected_indexes:
++                sel_new.select(idx, idx)
++
++            sel_old = QItemSelection()
++            for idx in deselected_indexes:
++                sel_old.select(idx, idx)
++
++            self.selectionChanged.emit(sel_new, sel_old)
++
++    def clear(self) -> None:
++        """"""Clear all selected items.""""""
++        deselected_indexes = []
++        row_count = self._model.rowCount()
++        for i in range(row_count):
++            index = self._model.index(i, 0)
++            if self._model.data(index, Roles.IS_SELECTED):
++                self._model.setData(index, False, Roles.IS_SELECTED)
++                deselected_indexes.append(index)
++
++        if deselected_indexes:
++            sel_old = QItemSelection()
++            for idx in deselected_indexes:
++                sel_old.select(idx, idx)
++            self.selectionChanged.emit(QItemSelection(), sel_old)
++
++    def selectedIndexes(self) -> List[QModelIndex]:
++        """"""Return a list of all selected indexes.""""""
++        if self._selection_cache is not None:
++            return list(self._selection_cache)
++
++        selected = []
++        row_count = self._model.rowCount()
++        for i in range(row_count):
++            index = self._model.index(i, 0)
++            if self._model.data(index, Roles.IS_SELECTED):
++                selected.append(index)
++
++        self._selection_cache = selected
++        return list(selected)
++
++    def currentIndex(self) -> QModelIndex:
++        if self._current_index_cache is not None:
++            if self._current_index_cache.isValid():
++                return self._current_index_cache
++            # If invalid, it might mean 'no current item', so we still trust it
++            # unless we invalidated it to None.
++            return self._current_index_cache
++
++        row_count = self._model.rowCount()
++        for i in range(row_count):
++            index = self._model.index(i, 0)
++            if self._model.data(index, Roles.IS_CURRENT):
++                self._current_index_cache = index
++                return index
++
++        self._current_index_cache = QModelIndex()
++        return self._current_index_cache
++
++    def setCurrentIndex(self, index: QModelIndex, command: QItemSelectionModel.SelectionFlag) -> None:
++        """"""Set current index and optionally select.""""""
++        old_current = self.currentIndex()
++        if index == old_current:
++            return
+ 
++        if index.isValid() and index.model() != self._model:
++            logger.warning(""SelectionModelShim: Attempted to set current index from a different model."")
++            return
+ 
+-class GalleryViewport(QOpenGLWidget):
+-    """"""OpenGL viewport that ensures an opaque background.""""""
++        # Unset old current
++        if old_current.isValid():
++            self._model.setData(old_current, False, Roles.IS_CURRENT)
+ 
+-    def __init__(self, parent=None) -> None:
+-        super().__init__(parent)
+-        self._bg_color: QColor | None = None
++        # Set new current
++        if index.isValid():
++            if not self._model.setData(index, True, Roles.IS_CURRENT):
++                logger.warning(f""SelectionModelShim: Failed to set current index for row {index.row()}"")
++        else:
++            logger.debug(""SelectionModelShim: Clearing current index (invalid index passed)."")
+ 
+-        # Disable the alpha buffer to prevent transparency issues with the DWM
+-        # when using a frameless window configuration.
+-        gl_format = QSurfaceFormat()
+-        gl_format.setAlphaBufferSize(0)
+-        self.setFormat(gl_format)
++        self.currentChanged.emit(index, old_current)
+ 
+-    def set_background_color(self, color: QColor) -> None:
+-        """"""Set the background color for the viewport.""""""
+-        self._bg_color = color
+-        self.update()
++        if command != QItemSelectionModel.SelectionFlag.NoUpdate:
++            self.select(index, command)
+ 
+-    def paintGL(self) -> None:
+-        """"""Clear the background to the theme's base color with full opacity.""""""
+-        self.clear_background()
+ 
+-    def clear_background(self) -> None:
+-        """"""Explicitly clear the viewport background.""""""
+-        if self._bg_color:
+-            base_color = self._bg_color
+-        else:
+-            base_color = self.palette().color(QPalette.ColorRole.Base)
++class GalleryQuickWidget(QQuickWidget):
++    """"""
++    QML-hosting widget that replaces the legacy QListView-based GalleryGridView.
++    It exposes an API compatible with AssetGrid to minimize controller refactoring.
++    """"""
+ 
+-        # Ensure we have a context before issuing GL commands
+-        self.makeCurrent()
+-        gl.glClearColor(base_color.redF(), base_color.greenF(), base_color.blueF(), 1.0)
+-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
++    # Signals compatible with AssetGrid
++    clicked = Signal(QModelIndex)
++    itemClicked = clicked
++    doubleClicked = Signal(QModelIndex)
++    visibleRowsChanged = Signal(int, int)
++    customContextMenuRequested = Signal(QPoint)
++    requestPreview = Signal(QModelIndex)
++    previewReleased = Signal()
++    previewCancelled = Signal()
+ 
++    # Drag & Drop signals handled internally via DropArea -> filesDropped shim
+ 
+-class GalleryGridView(AssetGrid):
+-    """"""Dense icon-mode grid tuned for album browsing.""""""
++    def __init__(self, parent: QWidget | None = None) -> None:
++        super().__init__(parent)
+ 
+-    # Minimum width (and height) for grid items in pixels
+-    MIN_ITEM_WIDTH = 192
++        # Disable the alpha buffer to prevent transparency issues with the DWM
++        # when using a frameless window configuration.
++        gl_format = QSurfaceFormat()
++        gl_format.setAlphaBufferSize(0)
++        self.setFormat(gl_format)
+ 
+-    # Gap between grid items (provides 1px padding on each side)
+-    ITEM_GAP = 2
++        # Force opaque background
++        self.setClearColor(QColor(""#2b2b2b""))
++        self.setResizeMode(QQuickWidget.ResizeMode.SizeRootObjectToView)
++        self.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop, False)
++        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
++        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
++        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
++
++        self.statusChanged.connect(self._on_status_changed)
++        self.sceneGraphError.connect(self._on_scene_graph_error)
++
++        # Internal state
++        self._model = None
++        self._selection_shim: Optional[SelectionModelShim] = None
++        self._drop_handler: Optional[Callable[[List[Path]], None]] = None
++        self._drop_validator: Optional[Callable[[List[Path]], bool]] = None
++        self._last_context_menu_index: Optional[QModelIndex] = None
++
++    def setModel(self, model) -> None:
++        """"""Set the model and initialize the QML engine.""""""
++        self._model = model
++        self._selection_shim = SelectionModelShim(model, self)
++
++        # Register Image Provider
++        source_model = model
++        if hasattr(model, ""sourceModel""):
++            source_model = model.sourceModel()
++
++        provider = ThumbnailProvider(source_model)
++        self.engine().addImageProvider(""thumbnails"", provider)
++
++        # Expose model to QML
++        self.rootContext().setContextProperty(""assetModel"", self._model)
++
++        # Load QML
++        qml_dir = Path(__file__).resolve().parent.parent / ""qml""
++        qml_path = qml_dir / ""GalleryGrid.qml""
++
++        if not qml_path.exists():
++            logger.error(f""GalleryQuickWidget: QML file not found at {qml_path}"")
++            # Show visible error state
++            layout = QVBoxLayout(self)
++            label = QLabel(f""Critical Error: Gallery QML not found at\n{qml_path}"", self)
++            label.setStyleSheet(""color: #ff5555; background: #222; font-size: 14px; padding: 20px;"")
++            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
++            layout.addWidget(label)
++            return
+ 
+-    # Safety margin to prevent layout engine from dropping columns due to rounding
+-    # errors or strict boundary checks. This accounts for frame borders and
+-    # potential internal margins.
+-    SAFETY_MARGIN = 10
++        logger.info(f""GalleryQuickWidget: Loading QML from {qml_path}"")
++        self.setSource(QUrl.fromLocalFile(str(qml_path)))
+ 
+-    def __init__(self, parent=None) -> None:  # type: ignore[override]
+-        super().__init__(parent)
+-        self._selection_mode_enabled = False
+-        self.setSelectionMode(QListView.SelectionMode.SingleSelection)
+-        self.setViewMode(QListView.ViewMode.IconMode)
+-        # Defer initial size calculation to resizeEvent to avoid rendering the
+-        # default 192px layout before the viewport dimensions are known.
+-        self.setSpacing(0)
+-        self.setUniformItemSizes(True)
+-        self.setResizeMode(QListView.ResizeMode.Adjust)
+-        self.setMovement(QListView.Movement.Static)
+-        self.setFlow(QListView.Flow.LeftToRight)
+-        self.setWrapping(True)
+-        self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+-        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+-        self.setWordWrap(False)
+-        self.setSelectionRectVisible(False)
+-
+-        # Enable hardware acceleration for the viewport to improve scrolling performance
+-        gl_viewport = GalleryViewport()
+-        self.setViewport(gl_viewport)
+-
+-        self._updating_style = False
+-        self._apply_scrollbar_style()
+-
+-    def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore[override]
+-        """"""Override paintEvent to force a GL clear before items are drawn.""""""
+-        viewport = self.viewport()
+-        if isinstance(viewport, GalleryViewport):
+-            viewport.clear_background()
+-        super().paintEvent(event)
+-
+-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+-        super().resizeEvent(event)
+-        viewport_width = self.viewport().width()
+-        if viewport_width <= 0:
++        # Connect signals from QML root object
++        if self.status() == QQuickWidget.Status.Error:
++            logger.error(""GalleryQuickWidget: QML Engine reported errors."")
++            for error in self.errors():
++                logger.error(f""QML Error: {error.toString()}"")
+             return
+ 
++        root = self.rootObject()
++        if root is None:
++            logger.error(""GalleryQuickWidget: Failed to load root object from QML"")
++            return
+ 
+-        # Determine how many columns can fit with the minimum size constraint.
+-        # We model the grid cell as (item_width + gap), which provides 1px padding
+-        # on each side of the item, resulting in a visual 2px gutter between items.
+-        # We subtract SAFETY_MARGIN to align with the cell_size calculation below,
+-        # ensuring we don't calculate a column count that immediately fails the
+-        # minimum size check.
+-        available_width = viewport_width - self.SAFETY_MARGIN
+-        num_cols = max(1, int(available_width / (self.MIN_ITEM_WIDTH + self.ITEM_GAP)))
+-
+-        # Calculate the expanded cell size that will fill the available width.
+-        # We subtract SAFETY_MARGIN from the viewport width to prevent the layout
+-        # engine from dropping the last column due to rounding errors or strict
+-        # boundary checks.
+-        cell_size = int((viewport_width - self.SAFETY_MARGIN) / num_cols)
+-        new_item_width = cell_size - self.ITEM_GAP
+-        if new_item_width < self.MIN_ITEM_WIDTH:
+-            return  # Don't update if it would make items too small
+-
+-        current_size = self.iconSize().width()
+-        if current_size != new_item_width:
+-            new_size = QSize(new_item_width, new_item_width)
+-            self.setIconSize(new_size)
+-            self.setGridSize(QSize(cell_size, cell_size))
+-
+-            delegate = self.itemDelegate()
+-            if hasattr(delegate, ""set_base_size""):
+-                delegate.set_base_size(new_item_width)
+-
+-    def changeEvent(self, event: QEvent) -> None:
+-        if event.type() == QEvent.Type.PaletteChange:
+-            if not self._updating_style:
+-                self._apply_scrollbar_style()
+-        super().changeEvent(event)
+-
+-    def _apply_scrollbar_style(self) -> None:
+-        text_color = self.palette().color(QPalette.ColorRole.WindowText)
+-        base_color = self.palette().color(QPalette.ColorRole.Base)
+-
+-        # Propagate background color to the viewport
+-        viewport = self.viewport()
+-        if isinstance(viewport, GalleryViewport):
+-            viewport.set_background_color(base_color)
+-
+-        # We need to enforce the background color on the GalleryGridView (and its viewport)
+-        # because QOpenGLWidget in a translucent window context defaults to transparent.
+-        # By adding a background-color rule to the stylesheet, we ensure it's painted opaque.
+-        style = modern_scrollbar_style(text_color)
+-        bg_style = f""QListView {{ background-color: {base_color.name()}; }}""
+-
+-        full_style = f""{style}\n{bg_style}""
+-
+-        if self.styleSheet() == full_style:
++        root.itemClicked.connect(self._on_item_clicked)
++        root.currentIndexChanged.connect(self._on_current_index_changed)
++        root.visibleRowsChanged.connect(self._on_visible_rows_changed)
++        root.showContextMenu.connect(self._on_show_context_menu)
++        root.filesDropped.connect(self._on_files_dropped)
++
++    def model(self):
++        return self._model
++
++    def selectionModel(self) -> SelectionModelShim:
++        """"""Return the selection model shim.""""""
++        return self._selection_shim
++
++    def viewport(self) -> QWidget:
++        """"""Shim for QAbstractItemView.viewport().""""""
++        return self
++
++    def indexAt(self, point: QPoint) -> QModelIndex:
++        """"""
++        Shim for indexAt.
++
++        LIMITATION: This implementation does not perform actual geometric hit-testing
++        against the QML scene graph. It relies on the `_last_context_menu_index`
++        captured during the `customContextMenuRequested` event. Calls to this method
++        outside of a context menu event handler will likely return an invalid index
++        or a stale value.
++        """"""
++        if self._last_context_menu_index and self._last_context_menu_index.isValid():
++            return self._last_context_menu_index
++        return QModelIndex()
++
++    def currentIndex(self) -> QModelIndex:
++        """"""Return the current index.""""""
++        if self._selection_shim:
++            return self._selection_shim.currentIndex()
++        return QModelIndex()
++
++    def setCurrentIndex(self, index: QModelIndex) -> None:
++        """"""Set the current index.""""""
++        if not index.isValid() or not self._model:
+             return
+ 
+-        self._updating_style = True
+-        try:
+-            self.setStyleSheet(full_style)
+-        finally:
+-            self._updating_style = False
++        # Use selection shim to ensure signals fire if needed, or direct update
++        if self._selection_shim:
++            self._selection_shim.setCurrentIndex(index, QItemSelectionModel.SelectionFlag.NoUpdate)
++
++        # Also update QML view focus?
++        # Since we use two-way binding via model roles, if model updates, QML should reflect it
++        # IF QML binds to isCurrent. But QML GridView uses its own 'currentIndex'.
++        # We need to sync back to QML if Python changes it.
++        # Currently, we only support QML -> Python via signal.
++        # Python -> QML would require setting 'currentIndex' property on GridView via root function.
++        # For now, we rely on the fact that keyboard nav in QML updates QML index, which calls us.
++        pass
+ 
+     # ------------------------------------------------------------------
+-    # Selection mode toggling
++    # QML Signal Handlers
+     # ------------------------------------------------------------------
+-    def selection_mode_active(self) -> bool:
+-        """"""Return ``True`` when multi-selection mode is currently enabled.""""""
+-
+-        return self._selection_mode_enabled
++    @Slot(int)
++    def _on_status_changed(self, status):
++        if status == QQuickWidget.Status.Error:
++            for error in self.errors():
++                logger.error(f""QML Error: {error.toString()}"")
++        elif status == QQuickWidget.Status.Ready:
++            logger.info(""GalleryQuickWidget: QML Ready"")
++
++    @Slot(str, str)
++    def _on_scene_graph_error(self, error, message):
++        logger.error(f""SceneGraph Error: {error} - {message}"")
++
++    @Slot(int, int)
++    def _on_item_clicked(self, row: int, modifiers: int) -> None:
++        index = self._model.index(row, 0)
++        if index.isValid():
++            self.clicked.emit(index)
++            # Selection logic handled by QML or Controller?
++            # Original: Controller handles it via signals.
++            # QML 'itemClicked' is emitted when not in Selection Mode inside QML.
++
++    @Slot(int)
++    def _on_current_index_changed(self, row: int) -> None:
++        """"""Handle keyboard navigation or click updates from QML.""""""
++        index = self._model.index(row, 0)
++        if index.isValid():
++             if self._selection_shim:",2026-01-10T12:14:19Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2616569253,https://api.github.com/repos/AlaSQL/alasql/pulls/2306,src/15utility.js,Copilot,Copilot,Architectural Patterns,This IIFE pattern creates the `reEscape` object with a scoped `placeholder` variable. The placeholder (`\x00ESCAPED_BACKSLASH\x00`) is used internally during escape processing and the `placeholderRestore` regex is dynamically created from it with proper escaping. This keeps all escape-related definitions together in one clean structure.,"@@ -138,6 +138,40 @@ var doubleqq = (utils.doubleqq = function (s) {
+ 	return s.replace(/'/g, ""\\'"");
+ });
+ 
++/**
++  Unescape double-quoted strings (for SQL identifiers)
++  Handles escaped backslashes (\\\\), escaped double quotes (\\"") and doubled double quotes ("""")
++  @param {string} s Source string
++  @return {string} Unescaped string
++  @example
++
++  \\\\ => \\
++  \\"" => ""
++  """" => ""
++  \\\\\\"" => \\""
++
++  */
++var reEscape = (function () {
++	var placeholder = '\x00ESCAPED_BACKSLASH\x00';",2025-12-13T22:33:35Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2839057642,https://api.github.com/repos/runatlantis/atlantis/pulls/6225,server/user_config.go,Copilot,Copilot,Modularity & Layering,"Done in 3c2a7a0. `ToBlockedExtraArgs()` now returns `events.DefaultBlockedExtraArgs` directly when the field is empty, so the defaults live in the config layer. `NewCommentParser` no longer has any fallback — it receives a concrete list from `ToBlockedExtraArgs()` and stores it as-is.","@@ -163,6 +164,22 @@ func (u UserConfig) ToAllowCommandNames() ([]command.Name, error) {
+ 	return allowCommands, nil
+ }
+ 
++// ToBlockedExtraArgs parses BlockedExtraArgs into a slice of flag prefixes.
++// When BlockedExtraArgs is empty, nil is returned and the caller should use",2026-02-23T04:46:00Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2291341215,https://api.github.com/repos/operately/operately/pulls/3195,app/lib/operately/md/project.ex,Copilot,Copilot,Modularity & Layering,I've extracted the timeline activities functionality to a dedicated module `Operately.MD.Project.TimelineActivities` following the same pattern as goal discussions. The complex logic (89 lines) has been moved from the main project module to the new dedicated module with a clean `render/1` API. See commit df24d7a.,"@@ -169,6 +200,96 @@ defmodule Operately.MD.Project do
+   defp render_contextual_date(nil), do: ""Not Set""
+   defp render_contextual_date(date), do: date.value
+ 
++  defp render_timeline_activities(project) do",2025-08-21T14:59:11Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,AI Coding Agent,Resolved
+2616588184,https://api.github.com/repos/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager/pulls/429,src/iPhoto/gui/ui/models/asset_state_manager.py,OliverZhaohaibin,Google_Jules,Duplication/Reuse,"@jules
+Inefficient duplicate check in abs_lookup maintenance. On line 174, the code checks 'if key not in self._abs_lookup' before adding an entry. However, if multiple rows have the same absolute path (which shouldn't happen but might due to data corruption or race conditions), only the first occurrence will be indexed. This could lead to inconsistent lookup results. Consider logging a warning when duplicates are detected to help identify data integrity issues.
+```
+                key = str(abs_val)
+                if key not in self._abs_lookup:
+                    self._abs_lookup[key] = idx
+```","@@ -148,15 +166,35 @@ def append_chunk(self, chunk: List[Dict[str, object]]) -> Tuple[int, int]:
+         start_row = len(self._rows)
+         self._rows.extend(chunk)
+         for offset, row_data in enumerate(chunk):
+-            self._row_lookup[row_data[""rel""]] = start_row + offset
++            idx = start_row + offset
++            self._row_lookup[row_data[""rel""]] = idx
++            abs_val = row_data.get(""abs"")
++            if abs_val:
++                key = str(abs_val)
++                if key not in self._abs_lookup:
++                    self._abs_lookup[key] = idx",2025-12-13T23:17:30Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,Human Developer,Resolved
+2296772973,https://api.github.com/repos/selfxyz/self/pulls/943,.github/workflows/mobile-ci.yml,transphorm,OpenAI_Codex,Abstraction & Extensibility,abstract `build-android` into it's own job so it can run in parallel with `build-ios`. cuts total runtime in half,"@@ -275,22 +253,83 @@ jobs:
+         working-directory: ./app
+       - name: Build iOS
+         run: |
+-          echo ""Building iOS app...""
++          echo ""Building iOS app for simulator (no signing required)...""
+           echo ""Project: ${{ env.IOS_PROJECT_NAME }}, Scheme: ${{ env.IOS_PROJECT_SCHEME }}""
+ 
+           WORKSPACE_PATH=""ios/${{ env.IOS_PROJECT_NAME }}.xcworkspace""
+ 
+-          # Use cached derived data and enable parallel builds for faster compilation
++          # Build for iOS Simulator to avoid code signing issues in CI
+           xcodebuild -workspace ""$WORKSPACE_PATH"" \
+             -scheme ${{ env.IOS_PROJECT_SCHEME }} \
+             -configuration Release \
+-            -destination ""generic/platform=iOS"" \
++            -sdk iphonesimulator \
++            -destination ""generic/platform=iOS Simulator"" \
+             -derivedDataPath ios/build \
+             -jobs ""$(sysctl -n hw.ncpu)"" \
+             -parallelizeTargets \
+             -quiet || { echo ""❌ iOS build failed""; exit 1; }
+           echo ""✅ iOS build succeeded""
+         working-directory: ./app
++
++  build-android:",2025-08-24T19:05:17Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,AI Coding Agent,Resolved
+2971194580,https://api.github.com/repos/microsoft/presidio-research/pulls/168,docs/adr/ADR-001-simplified-evaluation-pipeline.md,Copilot,Copilot,Abstraction & Extensibility,"Updated in d7d95e9. The Workflow and Typical usage sections in ADR-002 now reflect the specified interface — both `from_dataset` and `from_model` always return a `CanonicalMapper` instance, `get_mapping(mode='html')` is used to inspect gaps, `map({...})` for manual resolution, and `get_mapping()` to retrieve the final dict. The `map_entities` call in ADR-001 is also updated to `map_entities(results_df, mapping=ENTITY_MAPPING)`.","@@ -0,0 +1,133 @@
++# ADR-001: Simplified Evaluation Pipeline Using DataFrame as Clean Interface
++
++## Status
++
++Proposed
++
++## Date
++
++2026-03-21
++
++## Context
++
++The current evaluation pipeline in `presidio_evaluator` is tightly coupled and requires several intermediate steps to go from a dataset and a model to evaluation metrics. The full flow today is:
++
++```
++Dataset (List[InputSample])
++    → Evaluator(model=model)            # model is embedded in evaluator
++    → evaluator.evaluate_all(dataset)   # runs inference AND builds per-sample EvaluationResult objects
++    → List[EvaluationResult]            # intermediate per-sample carriers
++    → evaluator.calculate_score(...)    # calls get_results_dataframe() → DataFrame → scoring
++    → EvaluationResult (aggregated)
++```
++
++This design has four concrete pain points:
++
++1. **Model is coupled to the Evaluator** — `BaseEvaluator.__init__` takes a `model` argument, and `evaluate_all()` calls `model.batch_predict`, `model.filter_tags_in_supported_entities`, and `model.to_scheme` internally. This makes it impossible to evaluate a pre-computed result set without also instantiating a model.
++
++2. **`evaluate_all()` does two things** — it runs model inference AND builds per-sample `EvaluationResult` objects. These objects are simple data carriers holding `(tokens, actual_tags, predicted_tags, start_indices)`, yet they require callers to go through the evaluator just to get predictions into a usable shape.
++
++3. **The real interface already exists but is buried** — `SpanEvaluator.calculate_score()` and `TokenEvaluator.calculate_score()` internally call `get_results_dataframe()` to convert `List[EvaluationResult]` to a DataFrame, and then call `calculate_score_on_df()`. The `EvaluationResult` list is a wasteful intermediate step; the DataFrame is the actual computational surface.
++
++4. **Entity mapping logic is scattered** — entity type remapping lives in `BaseModel.align_entity_types`, `BaseEvaluator.align_entity_types` (static method), and is applied independently in both models and evaluators. There is no single, composable entry point for this transformation.
++
++A new contributor trying to run an evaluation must understand all of these layers before being able to get a single metric out of the system. The goal of this ADR is to establish a clean, linear pipeline with a single well-defined interface point between the model and the evaluator.
++
++## Decision
++
++Adopt the **results DataFrame** as the canonical interface boundary between the model stage and the evaluation stage. The DataFrame has the following five-column schema:
++
++| Column | Type | Description |
++|---|---|---|
++| `sentence_id` | `int` | Index of the source sentence in the dataset |
++| `token` | `str` | Token string |
++| `annotation` | `str` | Ground-truth entity tag (from `InputSample.tags`) |
++| `prediction` | `str` | Model-predicted entity tag |
++| `start_indices` | `int` | Character start offset of the token within the sentence |
++
++This schema is already produced by `get_results_dataframe()` and consumed by `calculate_score_on_df()`. The changes below make it the first-class output of the model stage instead of an internal implementation detail of the evaluator.
++
++### Proposed simplified pipeline (5 steps)
++
++```python
++# 1. Load dataset
++dataset = InputSample.read_dataset_json(""data/dataset.json"")
++
++# 2. Choose model and run predictions → get DataFrame directly
++model = PresidioAnalyzerWrapper(model=AnalyzerEngine())
++results_df = model.predict_dataset(dataset)  # NEW: returns the DataFrame directly
++
++# 3. Map entities (transforms both predictions and annotations into canonical entities)
++results_df = map_entities(results_df)",2026-03-22T07:26:22Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,AI Coding Agent,Resolved
+2418593500,https://api.github.com/repos/DaveSkender/Stock.Indicators/pulls/1515,.github/instructions/buffer-indicators.instructions.md,Copilot,Copilot,Architectural Patterns,"Replaced with efficient direct cast: `(IReadOnlyList<IReusable>)valuesA` instead of `.Cast<IReusable>().ToList()`. This matches the pattern used in Beta, EMA, and SMA extension methods. Updated both the documentation example and actual implementations (Correlation and PRS) for consistency.
+
+Commit: Will show after push","@@ -197,8 +197,39 @@ Use when the indicator requires two synchronized input series (like Correlation,
+ **Required methods**:
+ 
+ - `Add(DateTime timestamp, double valueA, double valueB)` - Core calculation with paired values
+-- `Add((IReusable A, IReusable B) pair)` - Single pair entry point
+-- `Add(IReadOnlyList<(IReusable A, IReusable B)> pairs)` - Batch pairs entry point
++- `Add(IReusable valueA, IReusable valueB)` - Single pair entry point
++- `Add(IReadOnlyList<IReusable> valuesA, IReadOnlyList<IReusable> valuesB)` - Batch pairs entry point
++
++**CRITICAL RULES**:
++
++- ✅ **Constructor MUST accept**: Two `IReadOnlyList<IReusable>` parameters (e.g., `valuesA` and `valuesB`)
++- ✅ **Extension method MUST use**: `<T> where T : IReusable` generic constraint
++- ✅ **Timestamp validation**: MUST validate that timestamps match between paired inputs
++- ✅ **Count validation**: MUST validate that both input lists have the same count
++- ❌ **MUST NOT**: Accept single `IQuote` or `IReadOnlyList<IQuote>` parameters
++
++**Example constructor and extension**:
++
++```csharp
++public CorrelationList(
++    int lookbackPeriods,
++    IReadOnlyList<IReusable> valuesA,
++    IReadOnlyList<IReusable> valuesB)
++    : this(lookbackPeriods)
++    => Add(valuesA, valuesB);
++
++public static CorrelationList ToCorrelationList<T>(
++    this IReadOnlyList<T> valuesA,
++    IReadOnlyList<T> valuesB,
++    int lookbackPeriods)
++    where T : IReusable
++{
++    IReadOnlyList<IReusable> castSeriesA = valuesA.Cast<IReusable>().ToList();",2025-10-10T06:09:07Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,AI Coding Agent,Resolved
+2505299194,https://api.github.com/repos/dubzzz/fast-check/pulls/6249,.github/workflows/build-status.yml,dubzzz,Copilot,General Design/Maintainability,"```suggestion
+    steps:
+      - uses: ./.github/workflows/deploy-documentation-netlify.yml
+        secrets: inherit
+```
+","@@ -467,45 +467,8 @@ jobs:
+     runs-on: ubuntu-latest
+     permissions:
+       pull-requests: write
+-    env:
+-      DRAFT_BUILD: ${{github.event_name == 'push' && github.ref == 'refs/heads/main' && 'false' || 'true'}}
+-    steps:
+-      - name: Download documentation artifacts
+-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+-        with:
+-          name: website
+-          path: artifacts/
+-      - name: Alter robots.txt for draft build
+-        if: env.DRAFT_BUILD == 'true'
+-        run: |
+-          echo ""User-agent: *"" > artifacts/robots.txt
+-          echo ""Disallow: /"" >> artifacts/robots.txt
+-      - name: Configure custom headers
+-        run: |
+-          echo ""/*"" > artifacts/_headers
+-          echo ""  Content-Security-Policy: default-src 'self'; img-src 'self' data: badge.fury.io *.cloudfront.net img.shields.io raw.githubusercontent.com www.netlify.com api.securityscorecards.dev bestpractices.coreinfrastructure.org www.bestpractices.dev cdn.bsky.app;connect-src *.algolia.net *.algolianet.com public.api.bsky.app api.counterapi.dev;script-src 'self' 'unsafe-inline' 'unsafe-eval';frame-src 'self' *.codesandbox.io www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; manifest-src 'self'; base-uri fast-check.dev;"" >> artifacts/_headers
+-          echo ""/api-reference/*"" >> artifacts/_headers
+-          echo ""  Content-Security-Policy: default-src 'none'; img-src 'self' data:; connect-src data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"" >> artifacts/_headers
+-      - name: Compress documentation artifacts as zip
+-        run: zip -r artifacts.zip artifacts
+-      - name: Deploy to Netlify
+-        id: deployment_to_netlify
+-        run: |
+-          curl -H ""Content-Type: application/zip"" -H ""Authorization: Bearer ${{secrets.NETLIFY_AUTH_TOKEN}}"" --data-binary ""@artifacts.zip"" https://api.netlify.com/api/v1/sites/${{secrets.NETLIFY_SITE_ID}}/deploys?draft=${{env.DRAFT_BUILD}} > deploy.json
+-          cat deploy.json
+-          deploy_url=$(jq -r '.deploy_url' --exit-status deploy.json)
+-          echo ""deploy_url=$deploy_url"" >> $GITHUB_OUTPUT
+-      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+-        name: Notify the user of the preview
+-        if: env.DRAFT_BUILD == 'true'
+-        with:
+-          script: |
+-            github.rest.issues.createComment({
+-              issue_number: context.issue.number,
+-              owner: context.repo.owner,
+-              repo: context.repo.repo,
+-              body: '👋 A preview of the new documentation is available at: ${{steps.deployment_to_netlify.outputs.deploy_url}}'
+-            })
++    uses: ./.github/workflows/deploy-documentation-netlify.yml
++    secrets: inherit",2025-11-07T20:07:07Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2722185969,https://api.github.com/repos/stacklok/toolhive/pulls/3323,cmd/thv-operator/controllers/embeddingserver_controller.go,jerm-dro,Claude_Code,Duplication/Reuse,"There's an open RFC for improving some CRDs: https://github.com/stacklok/toolhive-rfcs/pull/23
+
+It's on my plate to more closely review that RFC. I think we may also want to add an item about enabling reuse of implementations. If it doesn't fit in that PR, I will open up a separate/issue RFC. ","@@ -0,0 +1,1162 @@
++// SPDX-License-Identifier: Apache-2.0
++
++// Package controllers contains the reconciliation logic for the EmbeddingServer custom resource.
++// It handles the creation, update, and deletion of HuggingFace embedding inference servers in Kubernetes.
++package controllers
++
++import (
++	""context""
++	""fmt""
++	""maps""
++	""reflect""
++	""time""
++
++	appsv1 ""k8s.io/api/apps/v1""
++	corev1 ""k8s.io/api/core/v1""
++	""k8s.io/apimachinery/pkg/api/errors""
++	""k8s.io/apimachinery/pkg/api/meta""
++	""k8s.io/apimachinery/pkg/api/resource""
++	metav1 ""k8s.io/apimachinery/pkg/apis/meta/v1""
++	""k8s.io/apimachinery/pkg/runtime""
++	""k8s.io/apimachinery/pkg/types""
++	""k8s.io/apimachinery/pkg/util/intstr""
++	""k8s.io/client-go/tools/record""
++	ctrl ""sigs.k8s.io/controller-runtime""
++	""sigs.k8s.io/controller-runtime/pkg/client""
++	""sigs.k8s.io/controller-runtime/pkg/controller/controllerutil""
++	""sigs.k8s.io/controller-runtime/pkg/log""
++
++	mcpv1alpha1 ""github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1""
++	ctrlutil ""github.com/stacklok/toolhive/cmd/thv-operator/pkg/controllerutil""
++	""github.com/stacklok/toolhive/cmd/thv-operator/pkg/validation""
++)
++
++// EmbeddingServerReconciler reconciles a EmbeddingServer object
++type EmbeddingServerReconciler struct {
++	client.Client
++	Scheme           *runtime.Scheme
++	Recorder         record.EventRecorder
++	PlatformDetector *ctrlutil.SharedPlatformDetector
++	ImageValidation  validation.ImageValidation
++}
++
++const (
++	// embeddingContainerName is the name of the embedding container used in pod templates
++	embeddingContainerName = ""embedding""
++
++	// embeddingFinalizerName is the finalizer name for EmbeddingServer resources
++	embeddingFinalizerName = ""embeddingserver.toolhive.stacklok.dev/finalizer""
++
++	// modelCacheMountPath is the mount path for the model cache volume
++	modelCacheMountPath = ""/data""
++)
++
++//+kubebuilder:rbac:groups=toolhive.stacklok.dev,resources=embeddingservers,verbs=get;list;watch;create;update;patch;delete
++//+kubebuilder:rbac:groups=toolhive.stacklok.dev,resources=embeddingservers/status,verbs=get;update;patch
++//+kubebuilder:rbac:groups=toolhive.stacklok.dev,resources=embeddingservers/finalizers,verbs=update
++//+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
++//+kubebuilder:rbac:groups="""",resources=services,verbs=get;list;watch;create;update;patch;delete
++//+kubebuilder:rbac:groups="""",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
++//+kubebuilder:rbac:groups="""",resources=secrets,verbs=get;list;watch
++//+kubebuilder:rbac:groups="""",resources=events,verbs=create;patch
++
++// Reconcile is part of the main kubernetes reconciliation loop which aims to
++// move the current state of the cluster closer to the desired state.
++//
++//nolint:gocyclo // Reconciliation logic complexity is acceptable
++func (r *EmbeddingServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
++	ctxLogger := log.FromContext(ctx)
++
++	// Fetch the EmbeddingServer instance
++	embedding := &mcpv1alpha1.EmbeddingServer{}
++	err := r.Get(ctx, req.NamespacedName, embedding)
++	if err != nil {
++		if errors.IsNotFound(err) {
++			ctxLogger.Info(""EmbeddingServer resource not found. Ignoring since object must be deleted"")
++			return ctrl.Result{}, nil
++		}
++		ctxLogger.Error(err, ""Failed to get EmbeddingServer"")
++		return ctrl.Result{}, err
++	}
++
++	// Perform early validations
++	if result, err := r.performValidations(ctx, embedding); err != nil || result.RequeueAfter > 0 {
++		return result, err
++	}
++
++	// Handle deletion
++	if result, done, err := r.handleDeletion(ctx, embedding); done {
++		return result, err
++	}
++
++	// Add finalizer if needed
++	if result, done, err := r.ensureFinalizer(ctx, embedding); done {
++		return result, err
++	}
++
++	// Track if we need to requeue after status update
++	var requeueResult ctrl.Result
++
++	// Ensure statefulset exists and is up to date
++	if result, err := r.ensureStatefulSet(ctx, embedding); err != nil {
++		return ctrl.Result{}, err
++	} else if result.RequeueAfter > 0 {
++		requeueResult = result
++	}
++
++	// Ensure service exists
++	if result, err := r.ensureService(ctx, embedding); err != nil {
++		return ctrl.Result{}, err
++	} else if result.RequeueAfter > 0 {
++		// If we already have a requeue scheduled, keep the shorter duration
++		if requeueResult.RequeueAfter == 0 || (result.RequeueAfter > 0 && result.RequeueAfter < requeueResult.RequeueAfter) {
++			requeueResult = result
++		}
++	}
++
++	// Always update the EmbeddingServer status before returning
++	if err := r.updateEmbeddingServerStatus(ctx, embedding); err != nil {
++		ctxLogger.Error(err, ""Failed to update EmbeddingServer status"")
++		return ctrl.Result{}, err
++	}
++
++	return requeueResult, nil
++}
++
++// performValidations performs all early validations for the EmbeddingServer
++//
++//nolint:unparam // error return kept for consistency with reconciler pattern
++func (r *EmbeddingServerReconciler) performValidations(
++	ctx context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) (ctrl.Result, error) {
++	ctxLogger := log.FromContext(ctx)
++
++	// Validate PodTemplateSpec early
++	if !r.validateAndUpdatePodTemplateStatus(ctx, embedding) {
++		// Status fields were set by validateAndUpdatePodTemplateStatus, now update
++		if err := r.Status().Update(ctx, embedding); err != nil {
++			ctxLogger.Error(err, ""Failed to update EmbeddingServer status after PodTemplateSpec validation failure"")
++			return ctrl.Result{}, err
++		}
++		return ctrl.Result{}, nil
++	}
++
++	// Validate image
++	if err := r.validateImage(ctx, embedding); err != nil {
++		// Status fields were set by validateImage, now update
++		if statusErr := r.Status().Update(ctx, embedding); statusErr != nil {
++			ctxLogger.Error(statusErr, ""Failed to update EmbeddingServer status after image validation failure"")
++			return ctrl.Result{}, statusErr
++		}
++		// We requeue to retry validation after image issues are resolved
++		ctxLogger.Error(err, ""Image validation failed, will retry"",
++			""image"", embedding.Spec.Image,
++			""requeueAfter"", 5*time.Minute)
++		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
++	}
++
++	return ctrl.Result{}, nil
++}
++
++// handleDeletion handles the deletion of EmbeddingServer resources
++//
++//nolint:unparam // ctrl.Result return kept for consistency with reconciler pattern
++func (r *EmbeddingServerReconciler) handleDeletion(
++	ctx context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) (ctrl.Result, bool, error) {
++	if embedding.GetDeletionTimestamp() == nil {
++		return ctrl.Result{}, false, nil
++	}
++
++	if controllerutil.ContainsFinalizer(embedding, embeddingFinalizerName) {
++		r.finalizeEmbeddingServer(ctx, embedding)
++
++		controllerutil.RemoveFinalizer(embedding, embeddingFinalizerName)
++		err := r.Update(ctx, embedding)
++		if err != nil {
++			return ctrl.Result{}, true, err
++		}
++	}
++	return ctrl.Result{}, true, nil
++}
++
++// ensureFinalizer ensures the finalizer is added to the EmbeddingServer
++//
++//nolint:unparam // ctrl.Result return kept for consistency with reconciler pattern
++func (r *EmbeddingServerReconciler) ensureFinalizer(
++	ctx context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) (ctrl.Result, bool, error) {
++	if controllerutil.ContainsFinalizer(embedding, embeddingFinalizerName) {
++		return ctrl.Result{}, false, nil
++	}
++
++	controllerutil.AddFinalizer(embedding, embeddingFinalizerName)
++	err := r.Update(ctx, embedding)
++	if err != nil {
++		return ctrl.Result{}, true, err
++	}
++	return ctrl.Result{}, false, nil
++}
++
++// ensureStatefulSet ensures the statefulset exists and is up to date
++func (r *EmbeddingServerReconciler) ensureStatefulSet(
++	ctx context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) (ctrl.Result, error) {
++	ctxLogger := log.FromContext(ctx)
++
++	statefulSet := &appsv1.StatefulSet{}
++	err := r.Get(ctx, types.NamespacedName{Name: embedding.Name, Namespace: embedding.Namespace}, statefulSet)
++	if err != nil && errors.IsNotFound(err) {
++		sts := r.statefulSetForEmbedding(ctx, embedding)
++		if sts == nil {
++			ctxLogger.Error(nil, ""Failed to create StatefulSet object"")
++			return ctrl.Result{}, fmt.Errorf(""failed to create StatefulSet object"")
++		}
++		ctxLogger.Info(""Creating a new StatefulSet"", ""StatefulSet.Namespace"", sts.Namespace, ""StatefulSet.Name"", sts.Name)
++		err = r.Create(ctx, sts)
++		if err != nil {
++			ctxLogger.Error(err, ""Failed to create new StatefulSet"", ""StatefulSet.Namespace"", sts.Namespace, ""StatefulSet.Name"", sts.Name)
++			return ctrl.Result{}, err
++		}
++		// StatefulSet created successfully, continue to ensure service
++		return ctrl.Result{}, nil
++	} else if err != nil {
++		ctxLogger.Error(err, ""Failed to get StatefulSet"")
++		return ctrl.Result{}, err
++	}
++
++	// Ensure the statefulset size matches the spec
++	desiredReplicas := embedding.GetReplicas()
++	if *statefulSet.Spec.Replicas != desiredReplicas {
++		statefulSet.Spec.Replicas = &desiredReplicas
++		if err := r.updateStatefulSetWithRetry(ctx, statefulSet); err != nil {
++			ctxLogger.Error(err, ""Failed to update StatefulSet replicas"",
++				""StatefulSet.Namespace"", statefulSet.Namespace,
++				""StatefulSet.Name"", statefulSet.Name)
++			return ctrl.Result{}, err
++		}
++		return ctrl.Result{RequeueAfter: time.Second}, nil
++	}
++
++	// Check if the statefulset spec changed
++	if r.statefulSetNeedsUpdate(ctx, statefulSet, embedding) {
++		newStatefulSet := r.statefulSetForEmbedding(ctx, embedding)
++		statefulSet.Spec = newStatefulSet.Spec
++		statefulSet.Annotations = newStatefulSet.Annotations
++		statefulSet.Labels = newStatefulSet.Labels
++		if err := r.updateStatefulSetWithRetry(ctx, statefulSet); err != nil {
++			ctxLogger.Error(err, ""Failed to update StatefulSet"",
++				""StatefulSet.Namespace"", statefulSet.Namespace,
++				""StatefulSet.Name"", statefulSet.Name)
++			return ctrl.Result{}, err
++		}
++		return ctrl.Result{RequeueAfter: time.Second}, nil
++	}
++
++	return ctrl.Result{}, nil
++}
++
++// updateStatefulSetWithRetry updates the statefulset
++// The reconciler loop will automatically retry on conflicts
++func (r *EmbeddingServerReconciler) updateStatefulSetWithRetry(
++	ctx context.Context,
++	statefulSet *appsv1.StatefulSet,
++) error {
++	return r.Update(ctx, statefulSet)
++}
++
++// ensureService ensures the service exists and is up to date
++//
++//nolint:unparam // ctrl.Result return kept for consistency with reconciler pattern
++func (r *EmbeddingServerReconciler) ensureService(
++	ctx context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) (ctrl.Result, error) {
++	ctxLogger := log.FromContext(ctx)
++
++	service := &corev1.Service{}
++	err := r.Get(ctx, types.NamespacedName{Name: embedding.Name, Namespace: embedding.Namespace}, service)
++	if err != nil && errors.IsNotFound(err) {
++		svc := r.serviceForEmbedding(ctx, embedding)
++		if svc == nil {
++			ctxLogger.Error(nil, ""Failed to create Service object"")
++			return ctrl.Result{}, fmt.Errorf(""failed to create Service object"")
++		}
++		ctxLogger.Info(""Creating a new Service"", ""Service.Namespace"", svc.Namespace, ""Service.Name"", svc.Name)
++		err = r.Create(ctx, svc)
++		if err != nil {
++			ctxLogger.Error(err, ""Failed to create new Service"", ""Service.Namespace"", svc.Namespace, ""Service.Name"", svc.Name)
++			return ctrl.Result{}, err
++		}
++		// Service created successfully, continue to update status
++		return ctrl.Result{}, nil
++	} else if err != nil {
++		ctxLogger.Error(err, ""Failed to get Service"")
++		return ctrl.Result{}, err
++	}
++
++	// Check if the service needs to be updated
++	if r.serviceNeedsUpdate(service, embedding) {
++		desiredService := r.serviceForEmbedding(ctx, embedding)
++		service.Spec.Ports = desiredService.Spec.Ports
++		service.Labels = desiredService.Labels
++		service.Annotations = desiredService.Annotations
++		// Preserve ClusterIP as it's immutable
++		if err := r.Update(ctx, service); err != nil {
++			ctxLogger.Error(err, ""Failed to update Service"",
++				""Service.Namespace"", service.Namespace,
++				""Service.Name"", service.Name)
++			return ctrl.Result{}, err
++		}
++		ctxLogger.Info(""Updated Service"", ""Service.Namespace"", service.Namespace, ""Service.Name"", service.Name)
++		return ctrl.Result{RequeueAfter: time.Second}, nil
++	}
++
++	return ctrl.Result{}, nil
++}
++
++// serviceNeedsUpdate checks if the service needs to be updated based on the embedding spec
++func (*EmbeddingServerReconciler) serviceNeedsUpdate(
++	service *corev1.Service,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) bool {
++	desiredPort := embedding.GetPort()
++
++	// Check if any port has changed
++	for _, port := range service.Spec.Ports {
++		if port.Name == ""http"" && port.Port != desiredPort {
++			return true
++		}
++	}
++
++	// Check ResourceOverrides (annotations and labels)
++	expectedAnnotations := make(map[string]string)
++	expectedLabels := make(map[string]string)
++
++	if embedding.Spec.ResourceOverrides != nil && embedding.Spec.ResourceOverrides.Service != nil {
++		if embedding.Spec.ResourceOverrides.Service.Annotations != nil {
++			maps.Copy(expectedAnnotations, embedding.Spec.ResourceOverrides.Service.Annotations)
++		}
++		if embedding.Spec.ResourceOverrides.Service.Labels != nil {
++			maps.Copy(expectedLabels, embedding.Spec.ResourceOverrides.Service.Labels)
++		}
++	}
++
++	// Check if expected annotations are present in service
++	for key, value := range expectedAnnotations {
++		if service.Annotations[key] != value {
++			return true
++		}
++	}
++
++	// Check if expected labels are present in service
++	for key, value := range expectedLabels {
++		if service.Labels[key] != value {
++			return true
++		}
++	}
++
++	return false
++}
++
++// validateAndUpdatePodTemplateStatus validates the PodTemplateSpec and sets the status condition
++// Status is not updated here - it will be updated at the end of reconciliation
++func (r *EmbeddingServerReconciler) validateAndUpdatePodTemplateStatus(
++	ctx context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) bool {
++	ctxLogger := log.FromContext(ctx)
++
++	if embedding.Spec.PodTemplateSpec == nil {
++		meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++			Type:               mcpv1alpha1.ConditionPodTemplateValid,
++			Status:             metav1.ConditionTrue,
++			Reason:             mcpv1alpha1.ConditionReasonPodTemplateValid,
++			Message:            ""No PodTemplateSpec provided"",
++			ObservedGeneration: embedding.Generation,
++		})
++		return true
++	}
++
++	// Parse and validate PodTemplateSpec using builder
++	_, err := ctrlutil.NewPodTemplateSpecBuilder(embedding.Spec.PodTemplateSpec, embeddingContainerName)
++	if err != nil {
++		ctxLogger.Error(err, ""Invalid PodTemplateSpec"")
++		embedding.Status.Phase = mcpv1alpha1.EmbeddingServerPhaseFailed
++		embedding.Status.Message = fmt.Sprintf(""Invalid PodTemplateSpec: %v"", err)
++		meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++			Type:               mcpv1alpha1.ConditionPodTemplateValid,
++			Status:             metav1.ConditionFalse,
++			Reason:             mcpv1alpha1.ConditionReasonPodTemplateInvalid,
++			Message:            fmt.Sprintf(""Invalid PodTemplateSpec: %v"", err),
++			ObservedGeneration: embedding.Generation,
++		})
++		r.Recorder.Event(embedding, corev1.EventTypeWarning, ""ValidationFailed"", fmt.Sprintf(""Invalid PodTemplateSpec: %v"", err))
++		return false
++	}
++
++	meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++		Type:               mcpv1alpha1.ConditionPodTemplateValid,
++		Status:             metav1.ConditionTrue,
++		Reason:             mcpv1alpha1.ConditionReasonPodTemplateValid,
++		Message:            ""PodTemplateSpec is valid"",
++		ObservedGeneration: embedding.Generation,
++	})
++
++	return true
++}
++
++// validateImage validates the embedding image and sets the status condition
++// Status is not updated here - it will be updated at the end of reconciliation
++func (r *EmbeddingServerReconciler) validateImage(ctx context.Context, embedding *mcpv1alpha1.EmbeddingServer) error {
++	ctxLogger := log.FromContext(ctx)
++
++	imageValidator := validation.NewImageValidator(r.Client, embedding.Namespace, r.ImageValidation)
++	err := imageValidator.ValidateImage(ctx, embedding.Spec.Image, embedding.ObjectMeta)
++
++	if err == validation.ErrImageNotChecked {
++		ctxLogger.Info(""Image validation skipped - no enforcement configured"")
++		meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++			Type:    mcpv1alpha1.ConditionImageValidated,
++			Status:  metav1.ConditionTrue,
++			Reason:  mcpv1alpha1.ConditionReasonImageValidationSkipped,
++			Message: ""Image validation was not performed (no enforcement configured)"",
++		})
++		return nil
++	} else if err == validation.ErrImageInvalid {
++		ctxLogger.Error(err, ""EmbeddingServer image validation failed"", ""image"", embedding.Spec.Image)
++		embedding.Status.Phase = mcpv1alpha1.EmbeddingServerPhaseFailed
++		embedding.Status.Message = err.Error()
++		meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++			Type:    mcpv1alpha1.ConditionImageValidated,
++			Status:  metav1.ConditionFalse,
++			Reason:  mcpv1alpha1.ConditionReasonImageValidationFailed,
++			Message: err.Error(),
++		})
++		return err
++	} else if err != nil {
++		ctxLogger.Error(err, ""EmbeddingServer image validation system error"", ""image"", embedding.Spec.Image)
++		meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++			Type:    mcpv1alpha1.ConditionImageValidated,
++			Status:  metav1.ConditionFalse,
++			Reason:  mcpv1alpha1.ConditionReasonImageValidationError,
++			Message: fmt.Sprintf(""Error checking image validity: %v"", err),
++		})
++		return err
++	}
++
++	ctxLogger.Info(""Image validation passed"", ""image"", embedding.Spec.Image)
++	meta.SetStatusCondition(&embedding.Status.Conditions, metav1.Condition{
++		Type:    mcpv1alpha1.ConditionImageValidated,
++		Status:  metav1.ConditionTrue,
++		Reason:  mcpv1alpha1.ConditionReasonImageValidationSuccess,
++		Message: ""Image validation passed"",
++	})
++
++	return nil
++}
++
++// statefulSetForEmbedding creates a StatefulSet for the embedding server
++func (r *EmbeddingServerReconciler) statefulSetForEmbedding(
++	_ context.Context,
++	embedding *mcpv1alpha1.EmbeddingServer,
++) *appsv1.StatefulSet {
++	replicas := embedding.GetReplicas()
++	labels := r.labelsForEmbedding(embedding)
++
++	// Build container
++	container := r.buildEmbeddingContainer(embedding)
++
++	// Build pod template
++	podTemplate := r.buildPodTemplate(embedding, labels, container)
++
++	// Apply deployment overrides (reuse for StatefulSet pod template)
++	stsAnnotations, stsLabels := r.applyDeploymentOverrides(embedding, &podTemplate)
++
++	// Merge ResourceOverrides labels into base labels
++	finalLabels := make(map[string]string)
++	maps.Copy(finalLabels, labels)
++	maps.Copy(finalLabels, stsLabels)
++
++	statefulSet := &appsv1.StatefulSet{
++		ObjectMeta: metav1.ObjectMeta{
++			Name:        embedding.Name,
++			Namespace:   embedding.Namespace,
++			Labels:      finalLabels,
++			Annotations: stsAnnotations,
++		},
++		Spec: appsv1.StatefulSetSpec{
++			Replicas:    &replicas,
++			ServiceName: embedding.Name, // Required for StatefulSet
++			Selector: &metav1.LabelSelector{
++				MatchLabels: labels,
++			},
++			Template: podTemplate,
++		},
++	}
++
++	// Add volumeClaimTemplates if model caching is enabled
++	if embedding.IsModelCacheEnabled() {
++		statefulSet.Spec.VolumeClaimTemplates = r.buildVolumeClaimTemplates(embedding)
++	}
++
++	if err := ctrl.SetControllerReference(embedding, statefulSet, r.Scheme); err != nil {
++		return nil
++	}
++	return statefulSet
++}
++
++// buildVolumeClaimTemplates builds the volumeClaimTemplates for the StatefulSet
++func (r *EmbeddingServerReconciler) buildVolumeClaimTemplates(
++	embedding *mcpv1alpha1.EmbeddingServer,
++) []corev1.PersistentVolumeClaim {
++	size := ""10Gi""
++	if embedding.Spec.ModelCache.Size != """" {
++		size = embedding.Spec.ModelCache.Size
++	}
++
++	accessMode := corev1.ReadWriteOnce
++	if embedding.Spec.ModelCache.AccessMode != """" {
++		accessMode = corev1.PersistentVolumeAccessMode(embedding.Spec.ModelCache.AccessMode)
++	}
++
++	pvc := corev1.PersistentVolumeClaim{
++		ObjectMeta: metav1.ObjectMeta{
++			Name:   ""model-cache"",
++			Labels: r.labelsForEmbedding(embedding),
++		},
++		Spec: corev1.PersistentVolumeClaimSpec{
++			AccessModes: []corev1.PersistentVolumeAccessMode{accessMode},
++			Resources: corev1.VolumeResourceRequirements{
++				Requests: corev1.ResourceList{
++					corev1.ResourceStorage: resource.MustParse(size),
++				},
++			},
++		},
++	}
++
++	if embedding.Spec.ModelCache.StorageClassName != nil {
++		pvc.Spec.StorageClassName = embedding.Spec.ModelCache.StorageClassName
++	}
++
++	// Apply resource overrides if specified
++	if embedding.Spec.ResourceOverrides != nil && embedding.Spec.ResourceOverrides.PersistentVolumeClaim != nil {
++		if pvc.Annotations == nil && embedding.Spec.ResourceOverrides.PersistentVolumeClaim.Annotations != nil {
++			pvc.Annotations = make(map[string]string)
++		}
++		if embedding.Spec.ResourceOverrides.PersistentVolumeClaim.Annotations != nil {
++			maps.Copy(pvc.Annotations, embedding.Spec.ResourceOverrides.PersistentVolumeClaim.Annotations)
++		}
++		if embedding.Spec.ResourceOverrides.PersistentVolumeClaim.Labels != nil {
++			maps.Copy(pvc.Labels, embedding.Spec.ResourceOverrides.PersistentVolumeClaim.Labels)
++		}
++	}
++
++	return []corev1.PersistentVolumeClaim{pvc}
++}
++
++// buildEmbeddingContainer builds the container spec for the embedding server
++func (r *EmbeddingServerReconciler) buildEmbeddingContainer(embedding *mcpv1alpha1.EmbeddingServer) corev1.Container {
++	// Build container args
++	args := []string{
++		""--model-id"", embedding.Spec.Model,
++		""--port"", fmt.Sprintf(""%d"", embedding.GetPort()),
++	}
++	args = append(args, embedding.Spec.Args...)
++
++	// Build environment variables
++	envVars := r.buildEnvVars(embedding)
++
++	// Build container
++	container := corev1.Container{
++		Name:            embeddingContainerName,
++		Image:           embedding.Spec.Image,
++		Args:            args,
++		Env:             envVars,
++		ImagePullPolicy: corev1.PullPolicy(embedding.GetImagePullPolicy()),
++		Ports: []corev1.ContainerPort{
++			{
++				Name:          ""http"",
++				ContainerPort: embedding.GetPort(),
++				Protocol:      corev1.ProtocolTCP,
++			},
++		},
++		LivenessProbe:  r.buildLivenessProbe(embedding),
++		ReadinessProbe: r.buildReadinessProbe(embedding),
++	}
++
++	// Add volume mount and HF_HOME for model cache if enabled
++	if embedding.IsModelCacheEnabled() {
++		container.VolumeMounts = []corev1.VolumeMount{
++			{
++				Name:      ""model-cache"",
++				MountPath: modelCacheMountPath,
++			},
++		}
++		container.Env = append(container.Env, corev1.EnvVar{
++			Name:  ""HF_HOME"",
++			Value: modelCacheMountPath,
++		})
++	}
++
++	// Add resources if specified
++	r.applyResourceRequirements(embedding, &container)
++
++	return container
++}
++
++// buildEnvVars builds environment variables for the container
++func (*EmbeddingServerReconciler) buildEnvVars(embedding *mcpv1alpha1.EmbeddingServer) []corev1.EnvVar {
++	envVars := []corev1.EnvVar{
++		{
++			Name:  ""MODEL_ID"",
++			Value: embedding.Spec.Model,
++		},
++	}
++
++	// Add HuggingFace token from secret if provided
++	if embedding.Spec.HFTokenSecretRef != nil {
++		envVars = append(envVars, corev1.EnvVar{
++			Name: ""HF_TOKEN"",
++			ValueFrom: &corev1.EnvVarSource{
++				SecretKeyRef: &corev1.SecretKeySelector{
++					LocalObjectReference: corev1.LocalObjectReference{
++						Name: embedding.Spec.HFTokenSecretRef.Name,
++					},
++					Key: embedding.Spec.HFTokenSecretRef.Key,
++				},
++			},
++		})
++	}
++
++	for _, env := range embedding.Spec.Env {
++		envVars = append(envVars, corev1.EnvVar{
++			Name:  env.Name,
++			Value: env.Value,
++		})
++	}
++	return envVars
++}
++
++// buildLivenessProbe builds the liveness probe for the container
++func (*EmbeddingServerReconciler) buildLivenessProbe(embedding *mcpv1alpha1.EmbeddingServer) *corev1.Probe {
++	return &corev1.Probe{
++		ProbeHandler: corev1.ProbeHandler{
++			HTTPGet: &corev1.HTTPGetAction{
++				Path: ""/health"",
++				Port: intstr.FromInt(int(embedding.GetPort())),
++			},
++		},
++		InitialDelaySeconds: 60,
++		PeriodSeconds:       30,
++		TimeoutSeconds:      10,
++		FailureThreshold:    3,
++	}
++}
++
++// buildReadinessProbe builds the readiness probe for the container
++func (*EmbeddingServerReconciler) buildReadinessProbe(embedding *mcpv1alpha1.EmbeddingServer) *corev1.Probe {
++	return &corev1.Probe{
++		ProbeHandler: corev1.ProbeHandler{
++			HTTPGet: &corev1.HTTPGetAction{
++				Path: ""/health"",
++				Port: intstr.FromInt(int(embedding.GetPort())),
++			},
++		},
++		InitialDelaySeconds: 30,
++		PeriodSeconds:       10,
++		TimeoutSeconds:      5,
++		FailureThreshold:    3,
++	}
++}
++
++// applyResourceRequirements applies resource requirements to the container
++func (*EmbeddingServerReconciler) applyResourceRequirements(embedding *mcpv1alpha1.EmbeddingServer, container *corev1.Container) {
++	if embedding.Spec.Resources.Limits.CPU == """" && embedding.Spec.Resources.Limits.Memory == """" &&
++		embedding.Spec.Resources.Requests.CPU == """" && embedding.Spec.Resources.Requests.Memory == """" {
++		return
++	}
++
++	container.Resources = corev1.ResourceRequirements{
++		Limits:   corev1.ResourceList{},
++		Requests: corev1.ResourceList{},
++	}
++
++	if embedding.Spec.Resources.Limits.CPU != """" {
++		container.Resources.Limits[corev1.ResourceCPU] = resource.MustParse(embedding.Spec.Resources.Limits.CPU)
++	}
++	if embedding.Spec.Resources.Limits.Memory != """" {
++		container.Resources.Limits[corev1.ResourceMemory] = resource.MustParse(embedding.Spec.Resources.Limits.Memory)
++	}
++	if embedding.Spec.Resources.Requests.CPU != """" {
++		container.Resources.Requests[corev1.ResourceCPU] = resource.MustParse(embedding.Spec.Resources.Requests.CPU)
++	}
++	if embedding.Spec.Resources.Requests.Memory != """" {
++		container.Resources.Requests[corev1.ResourceMemory] = resource.MustParse(embedding.Spec.Resources.Requests.Memory)
++	}
++}
++
++// buildPodTemplate builds the pod template for the statefulset
++func (r *EmbeddingServerReconciler) buildPodTemplate(
++	embedding *mcpv1alpha1.EmbeddingServer,
++	labels map[string]string,
++	container corev1.Container,
++) corev1.PodTemplateSpec {
++	podTemplate := corev1.PodTemplateSpec{
++		ObjectMeta: metav1.ObjectMeta{
++			Labels: labels,
++		},
++		Spec: corev1.PodSpec{
++			Containers: []corev1.Container{container},
++		},
++	}
++
++	// Note: Volumes for model cache are managed by StatefulSet volumeClaimTemplates
++	// and will be automatically mounted with the name ""model-cache""
++
++	// Merge with user-provided PodTemplateSpec if specified
++	r.mergePodTemplateSpec(embedding, &podTemplate)
++
++	return podTemplate
++}
++
++// mergePodTemplateSpec merges user-provided PodTemplateSpec customizations
++func (r *EmbeddingServerReconciler) mergePodTemplateSpec(
++	embedding *mcpv1alpha1.EmbeddingServer,
++	podTemplate *corev1.PodTemplateSpec,
++) {",2026-01-23T17:31:36Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,Human Developer,Resolved
+2918732402,https://api.github.com/repos/kizniche/Mycodo/pulls/1516,mycodo/mycodo_flask/utils/utils_settings.py,Copilot,Copilot,General Design/Maintainability,"No path traversal validation was added — the code goes straight from the dict lookup to `os.rename`, consistent with how the original import handler works.","@@ -617,6 +617,127 @@ def settings_function_delete(form):
+     flash_success_errors(error, action, url_for('routes_settings.settings_function'))
+ 
+ 
++def settings_function_update(form):
++    """"""
++    Receive a function module file, check it for errors, replace the existing module
++    """"""
++    action = '{action} {controller}'.format(
++        action=gettext(""Update""),
++        controller=TRANSLATIONS['controller']['title'])
++    error = []
++
++    controller_info = None
++    existing_controller_info = None
++
++    try:
++        install_dir = os.path.abspath(INSTALL_DIRECTORY)
++        tmp_directory = os.path.join(install_dir, 'mycodo/functions/tmp_functions')
++        assure_path_exists(tmp_directory)
++        assure_path_exists(PATH_FUNCTIONS_CUSTOM)
++        tmp_name = 'tmp_function_testing.py'
++        full_path_tmp = os.path.join(tmp_directory, tmp_name)
++
++        controller_device_name = form.controller_id.data
++
++        if not form.update_controller_file.data:
++            error.append('No file present')
++        elif form.update_controller_file.data.filename == '':
++            error.append('No file name')
++        else:
++            form.update_controller_file.data.save(full_path_tmp)
++
++        # Load and validate the uploaded (new) module
++        try:
++            controller_info, status = load_module_from_file(full_path_tmp, 'functions')
++            if not controller_info or not hasattr(controller_info, 'FUNCTION_INFORMATION'):
++                error.append(""Could not load FUNCTION_INFORMATION dictionary from ""
++                             ""the uploaded controller module"")
++        except Exception:
++            error.append(""Could not load uploaded file as a python module:\n""
++                         ""{}"".format(traceback.format_exc()))
++
++        # Load the existing (old) module from disk to extract its function_name_unique
++        existing_file_path = os.path.join(
++            PATH_FUNCTIONS_CUSTOM, '{}.py'.format(controller_device_name.lower()))
++        try:
++            existing_controller_info, status = load_module_from_file(existing_file_path, 'functions')
++            if not existing_controller_info or not hasattr(existing_controller_info, 'FUNCTION_INFORMATION'):
++                error.append(""Could not load FUNCTION_INFORMATION dictionary from ""
++                             ""the existing controller module"")
++        except Exception:
++            error.append(""Could not load existing controller module as a python module:\n""
++                         ""{}"".format(traceback.format_exc()))
++
++        if not error:
++            if 'function_name_unique' not in controller_info.FUNCTION_INFORMATION:
++                error.append(
++                    ""'function_name_unique' not found in ""
++                    ""FUNCTION_INFORMATION dictionary"")
++            elif controller_info.FUNCTION_INFORMATION['function_name_unique'] == '':
++                error.append(""'function_name_unique' is empty"")
++            elif (controller_info.FUNCTION_INFORMATION['function_name_unique'].lower() !=
++                    existing_controller_info.FUNCTION_INFORMATION['function_name_unique'].lower()):
++                error.append(
++                    ""'function_name_unique' must match the existing module name '{}', ""
++                    ""but '{}' was found"".format(
++                        existing_controller_info.FUNCTION_INFORMATION['function_name_unique'],
++                        controller_info.FUNCTION_INFORMATION['function_name_unique']))
++
++            if 'function_name' not in controller_info.FUNCTION_INFORMATION:
++                error.append(""'function_name' not found in FUNCTION_INFORMATION dictionary"")
++            elif controller_info.FUNCTION_INFORMATION['function_name'] == '':
++                error.append(""'function_name' is empty"")
++
++            if 'dependencies_module' in controller_info.FUNCTION_INFORMATION:
++                if not isinstance(controller_info.FUNCTION_INFORMATION['dependencies_module'], list):
++                    error.append(""'dependencies_module' must be a list of tuples"")
++                else:
++                    for each_dep in controller_info.FUNCTION_INFORMATION['dependencies_module']:
++                        if not isinstance(each_dep, tuple):
++                            error.append(""'dependencies_module' must be a list of tuples"")
++                        elif len(each_dep) != 3:
++                            error.append(""'dependencies_module': tuples in list must have 3 items"")
++                        elif not each_dep[0] or not each_dep[1] or not each_dep[2]:
++                            error.append(
++                                ""'dependencies_module': tuples in list must ""
++                                ""not be empty"")
++                        elif each_dep[0] not in ['internal', 'pip-pypi', 'apt']:
++                            error.append(
++                                ""'dependencies_module': first in tuple ""
++                                ""must be 'internal', 'pip-pypi', ""
++                                ""or 'apt'"")
++
++        if not error:
++            # Determine filename from the uploaded module's function_name_unique
++            unique_name = '{}.py'.format(controller_info.FUNCTION_INFORMATION['function_name_unique'].lower())
++
++            # Move module from temp directory to function directory, overwriting the existing module
++            full_path_final = os.path.join(PATH_FUNCTIONS_CUSTOM, unique_name)
++            os.rename(full_path_tmp, full_path_final)",2026-03-11T14:26:43Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2810031063,https://api.github.com/repos/jonathanpeppers/spice/pulls/120,src/Spice/Platforms/iOS/RadioButton.cs,Copilot,Copilot,Architectural Patterns,"RadioButton should not implement IDisposable. According to the VIEW-LIFECYCLE-SPEC.md (lines 23-24), ""Only custom Views that hold resources implement IDisposable (opt-in). Built-in Views (Button, Label, StackLayout, etc.) do not implement IDisposable."" RadioButton is a built-in control and follows the same pattern as CheckBox, which also subscribes to native events in the constructor but does not implement IDisposable. The existing pattern in the codebase for event management in built-in controls is either: (1) Subscribe/unsubscribe based on property changes (like Button/Switch with OnClickedChanged/OnToggledChanged), or (2) Always subscribe without cleanup (like CheckBox). Consider following the CheckBox pattern by removing IDisposable and the Dispose method.","@@ -0,0 +1,92 @@
++namespace Spice;
++
++public partial class RadioButton : IDisposable",2026-02-15T22:19:56Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2836429848,https://api.github.com/repos/SOVEREIGN-NET/The-Sovereign-Network/pulls/1427,docs/encryption/README.md,Copilot,OpenAI_Codex,General Design/Maintainability,"This change removes the prior index/links to the detailed ADR/spec/guide documents in `docs/encryption/`. Even if the intent is to simplify, the README should still provide canonical pointers to the normative documents (or explicitly state they were removed/deprecated) so developers and auditors can discover the detailed handshake/security properties.
+```suggestion
+- No legacy or downgrade paths.
+
+## Normative documents
+
+This README is an overview only. The canonical, normative documentation for the
+encryption design, UHP v2 handshake, and security properties is provided in the
+ADR, spec, and guide documents under `docs/encryption/`.
+
+- Architecture Decision Records (ADRs) for encryption and UHP v2
+- Protocol/specification documents describing the full handshake flows
+- Security/property guides detailing threat model and invariants
+
+If any prior ADRs/specs/guides have been removed or deprecated, that status is
+documented in those files (or their replacement ADRs) within `docs/encryption/`.
+```","@@ -1,305 +1,10 @@
+-# ZHTP Encryption Architecture Documentation
++# Encryption Documentation (Alpha)
+ 
+-**Complete documentation for ZHTP's defense-in-depth encryption system combining classical (TLS 1.3) and post-quantum (Kyber512) cryptography.**
++This documentation covers the alpha encryption stance.
+ 
+----
+-
+-## 📚 Documentation Index
+-
+-### 1. **Architecture Decision Record (ADR)**
+-📄 [`ADR_QUIC_ENCRYPTION.md`](./ADR_QUIC_ENCRYPTION.md)
+-
+-**For:** Architects, decision makers, security reviewers
+-**Length:** ~1700 lines | **Time:** 30 minutes
+-
+-**Covers:**
+-- Why defense-in-depth encryption? (Threat model analysis)
+-- Classical vs quantum threats and how each layer mitigates
+-- Trade-off analysis: Performance vs Security guarantees
+-- Comparison to industry standards (TLS 1.3 hybrid mode)
+-- Risk assessment and mitigation strategies
+-- Testing and validation approach
+-- Future upgrade path for post-quantum era
+-
+-**Key Question:** ""Why not just use TLS 1.3 or just Kyber?""
+-
+----
+-
+-### 2. **Protocol Specification**
+-📄 [`QUIC_ENCRYPTION_PROTOCOL.md`](./QUIC_ENCRYPTION_PROTOCOL.md)
+-
+-**For:** Protocol engineers, implementers, security testers
+-**Length:** ~1400 lines | **Time:** 45 minutes
+-
+-**Covers:**
+-- Complete two-layer encryption model with diagrams
+-- Detailed handshake flow (Phase 1: UHP Auth, Phase 2: Kyber KEM, Phase 3: Master Key)
+-- Message encryption/decryption process step-by-step
+-- Key derivation formula: `HKDF(UHP || Kyber || Hash || NodeId)`
+-- Nonce management and randomness properties
+-- Security properties: Confidentiality, Integrity, Authentication, Forward Secrecy, Replay Protection
+-- Configuration parameters and constants
+-- Code examples (encryption, decryption, key derivation)
+-
+-**Key Question:** ""How does the protocol actually work?""
+-
+----
+-
+-### 3. **Complete Guide**
+-📄 [`QUIC_ENCRYPTION_GUIDE.md`](./QUIC_ENCRYPTION_GUIDE.md)
+-
+-**For:** All developers, new team members, security auditors
+-**Length:** ~1200 lines | **Time:** 1 hour
+-
+-**Covers:**
+-- Quick reference table (FAQ format)
+-- Architecture overview with layer responsibilities
+-- Handshake overview and master key composition
+-- Key derivation deep dive with attack scenarios
+-- Performance implications and benchmarks
+-- Security properties checklist
+-- Per-layer security analysis
+-- Future upgrade strategies
+-- Testing strategy (unit, integration, security tests)
+-- Troubleshooting guide
+-
+-**Key Question:** ""How do I understand and work with this system?""
+-
+----
+-
+-## 🎯 Quick Start by Role
+-
+-### I'm a...
+-
+-**Architect/Decision Maker**
+-→ Read: [ADR](./ADR_QUIC_ENCRYPTION.md) (30 min)
+-→ Why: Understand business/security trade-offs
+-
+-**Protocol Engineer**
+-→ Read: [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md) (45 min)
+-→ Why: Understand exact implementation details
+-
+-**Security Reviewer**
+-→ Read: [ADR](./ADR_QUIC_ENCRYPTION.md) + [Guide](./QUIC_ENCRYPTION_GUIDE.md) (1.5 hours)
+-→ Why: Verify threat model and security properties
+-
+-**New Team Member**
+-→ Read: [Guide](./QUIC_ENCRYPTION_GUIDE.md) (1 hour)
+-→ Then: Code files (30 min)
+-→ Why: Get complete mental model
+-
+-**Implementer/Debugger**
+-→ Read: [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md) (45 min)
+-→ Reference: Code examples section
+-→ Why: Understand exact behavior for debugging
+-
+----
+-
+-## 🔗 Related Code Files
+-
+-### Encryption Implementation
+-- `lib-network/src/protocols/quic_mesh.rs` - QUIC transport with ChaCha20+Kyber
+-- `lib-network/src/protocols/quic_handshake.rs` - UHP + Kyber handshake
+-- `lib-crypto/src/symmetric/chacha20.rs` - ChaCha20Poly1305 AEAD
+-
+-### Related Issues & PRs
+-- **Issue #492** - Document QUIC encryption architecture (this work)
+-- **Issue #498** - Multi-node communication failure (security fix using this encryption)
+-- **PR #499** - Fix Issue #498
+-- **Issue #161** - Unify encryption across protocols
+-- **Issue #486** - Security audit fixes
+-
+----
+-
+-## 🔐 Security Properties at a Glance
+-
+-| Property | Transport (TLS 1.3) | Application (ChaCha20+Kyber) | Combined |
+-|----------|-------------------|------------------------------|----------|
+-| **Confidentiality** | ✅ Classical | ✅ Classical + Quantum-Resistant | ✅ Dual-Protected |
+-| **Integrity** | ✅ HMAC | ✅ Poly1305 MAC | ✅ Dual-Checked |
+-| **Authentication** | ✅ X.509 Certs | ✅ Dilithium Signatures + NodeId Binding | ✅ Multi-Factor |
+-| **Forward Secrecy** | ✅ Ephemeral ECDHE | ✅ Random nonces per message | ✅ Complete |
+-| **Quantum-Resistant** | ❌ No | ✅ Yes (Kyber512) | ✅ Yes |
+-| **Identity Binding** | ❌ No | ✅ Yes (NodeId) | ✅ Yes |
+-
+----
+-
+-## 📊 Architecture Diagram
+-
+-```
+-┌─────────────────────────────────────────────┐
+-│         Application Layer Messages          │
+-│         (ZHTP Mesh Protocol)                │
+-└─────────────────────────────────────────────┘
+-                      ↓
+-        ┌──────────────────────────────┐
+-        │ APPLICATION LAYER ENCRYPTION │
+-        │ ChaCha20Poly1305 + Kyber512  │
+-        │ Post-Quantum Confidentiality │
+-        │ Identity Binding (NodeId)    │
+-        └──────────────────────────────┘
+-                      ↓
+-        ┌──────────────────────────────┐
+-        │  TRANSPORT LAYER ENCRYPTION  │
+-        │  TLS 1.3 via Quinn (QUIC)    │
+-        │  Classical Security + MitM   │
+-        │  Connection-Level Auth       │
+-        └──────────────────────────────┘
+-                      ↓
+-        ┌──────────────────────────────┐
+-        │        Network Layer         │
+-        │   UDP/IPv4 (Unencrypted)    │
+-        │   (Firewall Traversal)       │
+-        └──────────────────────────────┘
+-```
+-
+----
+-
+-## ⚡ Key Facts
+-
+-| Fact | Details |
+-|------|---------|
+-| **Handshake Time** | ~3 RTTs (~150ms at 50ms/RTT) |
+-| **Per-Message Overhead** | 12-byte nonce + 16-byte MAC = 28 bytes |
+-| **Per-Message Latency** | <1 microsecond (negligible) |
+-| **Forward Secrecy** | Yes - Different nonce per message |
+-| **Replay Protection** | Yes - Random nonce + sequence numbers |
+-| **Quantum-Ready** | Yes - Kyber upgrade path exists |
+-| **Master Key Inputs** | 4: UHP + Kyber + Hash + NodeId |
+-| **Nonce Randomness** | 96-bit per message |
+-| **Max Session Duration** | 1 hour (then rehandshake) |
+-
+----
+-
+-## 🚀 Getting Started
+-
+-### For Code Review
+-1. Read [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md) ""Complete Handshake Flow"" section
+-2. Review `lib-network/src/protocols/quic_handshake.rs` Phase 1-3
+-3. Check master key derivation in `quic_mesh.rs`
+-
+-### For Security Audit
+-1. Read [ADR](./ADR_QUIC_ENCRYPTION.md) ""Threat Model"" and ""Security Properties""
+-2. Read [Guide](./QUIC_ENCRYPTION_GUIDE.md) ""Security Properties Checklist""
+-3. Review code files mentioned above
+-4. Run security tests: `cargo test --test quic_security_tests`
+-
+-### For Implementation
+-1. Read [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md) complete flow
+-2. Reference code examples at end of document
+-3. Check configuration section for parameters
+-4. Refer to troubleshooting guide if issues arise
+-
+----
+-
+-## 📖 Table of Contents by Document
+-
+-### ADR_QUIC_ENCRYPTION.md
+-1. Executive Summary
+-2. Problem Statement (Previous Approaches)
+-3. Threat Model (Classical + Quantum Threats)
+-4. Architectural Design
+-5. Master Key Derivation
+-6. Trade-offs Analysis
+-7. Implementation Details
+-8. Comparison to Industry Standards
+-9. Risks and Mitigations
+-10. Testing Strategy
+-11. Future Considerations
+-12. Decision Rationale
+-13. Approval and Sign-off
+-
+-### QUIC_ENCRYPTION_PROTOCOL.md
+-1. Overview
+-2. Encryption Layers (Transport + Application)
+-3. Complete Handshake Flow (Phase 1-3)
+-4. Message Encryption/Decryption
+-5. Key Derivation
+-6. Nonce Management
+-7. Security Properties
+-8. Configuration
+-9. Examples (Code)
+-
+-### QUIC_ENCRYPTION_GUIDE.md
+-1. Quick Reference
+-2. Documentation Map by Role
+-3. Architecture Overview
+-4. Handshake Overview
+-5. Message Encryption Flow
+-6. Key Derivation Deep Dive
+-7. Security Properties Checklist
+-8. Performance Implications
+-9. Future Upgrade Path
+-10. Testing Strategy
+-11. Troubleshooting
+-12. References
+-
+----
+-
+-## 🔍 Common Questions
+-
+-**Q: Is this defense-in-depth or wasteful redundancy?**
+-A: Defense-in-depth. Each layer serves distinct security purpose. See [ADR](./ADR_QUIC_ENCRYPTION.md) ""Decision Rationale"".
+-
+-**Q: What if TLS 1.3 is broken by quantum computers?**
+-A: ChaCha20+Kyber layer still protects data (post-quantum secure). See [Threat Model](./ADR_QUIC_ENCRYPTION.md#threat-model).
+-
+-**Q: What if Kyber is broken?**
+-A: TLS 1.3 still protects data (proven classical security). See [Threat Model](./ADR_QUIC_ENCRYPTION.md#threat-model).
+-
+-**Q: How do peers agree on the same master key?**
+-A: Via UHP (Dilithium authentication) + Kyber (KEM) + HKDF derivation. See [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md#complete-handshake-flow).
+-
+-**Q: What are the four inputs to master key?**
+-A: UHP session key + Kyber shared secret + Handshake transcript hash + Peer NodeId. See [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md#master-key-derivation).
+-
+-**Q: Performance impact?**
+-A: Handshake ~150ms (one-time), per-message <1μs. Acceptable. See [Performance Analysis](./QUIC_ENCRYPTION_GUIDE.md#performance-implications).
+-
+----
+-
+-## 📝 Document Status
+-
+-| Document | Status | Lines | Last Updated |
+-|----------|--------|-------|--------------|
+-| ADR_QUIC_ENCRYPTION.md | ✅ Complete | 1700+ | 2025-12-23 |
+-| QUIC_ENCRYPTION_PROTOCOL.md | ✅ Complete | 1400+ | 2025-12-23 |
+-| QUIC_ENCRYPTION_GUIDE.md | ✅ Complete | 1200+ | 2025-12-23 |
+-| README.md (this file) | ✅ Complete | 300+ | 2025-12-23 |
+-
+----
+-
+-## 🎓 Learning Path
+-
+-```
+-Start Here (30 min)
+-    ↓
+-[Quick Reference] + [Architecture Overview]
+-    ↓
+-Choose Your Path:
+-    │
+-    ├─→ [Decision Maker] → Read ADR (30 min) → Done
+-    │
+-    ├─→ [Engineer] → Read Protocol Spec (45 min) → Code Review (30 min) → Done
+-    │
+-    ├─→ [Auditor] → Read Guide (1 hour) → Read ADR (30 min) → Code Review (1 hour) → Done
+-    │
+-    └─→ [New Member] → Read Guide (1 hour) → Handshake Overview (20 min) → Code examples (30 min) → Done
+-
+-Total Time: 30 min - 2.5 hours depending on role
+-```
+-
+----
+-
+-## 📧 Questions or Issues?
+-
+-- **Technical Questions:** Review relevant section in [Guide](./QUIC_ENCRYPTION_GUIDE.md#troubleshooting)
+-- **Protocol Issues:** Check [Protocol Spec](./QUIC_ENCRYPTION_PROTOCOL.md) for exact behavior
+-- **Architecture Questions:** See [ADR](./ADR_QUIC_ENCRYPTION.md) for rationale
+-- **Bug Reports:** Check code comments in `lib-network/src/protocols/quic_*.rs`
+-
+----
+-
+-**Last Updated:** December 23, 2025
+-**Authors:** ZHTP Security & Architecture Team
+-**Status:** Production-Ready Documentation
++## Summary
++- QUIC is transport-only.
++- UHP v2 is the only handshake.
++- Post-quantum algorithms: Kyber1024 + Dilithium5.
++- Session keys derive from the UHP v2 transcript hash.
++- No legacy or downgrade paths.",2026-02-21T18:18:56Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2033010810,https://api.github.com/repos/near/nearcore/pulls/13318,chain/client/src/debug.rs,Copilot,Devin,Abstraction & Extensibility,"Wrapping chunk.congestion_info() with Some() is unnecessary now that congestion_info is a concrete type. Removing the Some() wrapper will ensure consistency with the updated type.
+```suggestion
+                                congestion_info: chunk.congestion_info(),
+```","@@ -673,7 +673,7 @@ impl ClientActorInner {
+                                 )
+                                 .map(|s| s.whole_milliseconds() as u64),
+                                 congestion_level,
+-                                congestion_info: chunk.congestion_info(),
++                                congestion_info: Some(chunk.congestion_info()),",2025-04-08T11:43:31Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,Human Developer,Resolved
+2546002227,https://api.github.com/repos/unoplatform/uno/pulls/21429,src/Uno.UI/UI/Xaml/Data/Binding.cs,Copilot,Copilot,Duplication/Reuse,"There is code duplication between the two `SetBindingXBindProvider` methods. The new overload duplicates all the same assignments except for `XBindSourceType`. Consider having the new overload call the existing one and then set the additional property to reduce duplication and improve maintainability.
+
+Example:
+```csharp
+internal void SetBindingXBindProvider(object compiledSource, Func<object, (bool, object)> xBindSelector, Action<object, object> xBindBack, Type sourceType, string[] propertyPaths = null)
+{
+    SetBindingXBindProvider(compiledSource, xBindSelector, xBindBack, propertyPaths);
+    XBindSourceType = sourceType;
+}
+```
+```suggestion
+			SetBindingXBindProvider(compiledSource, xBindSelector, xBindBack, propertyPaths);
+```","@@ -231,6 +236,15 @@ internal void SetBindingXBindProvider(object compiledSource, Func<object, (bool,
+ 			XBindBack = xBindBack;
+ 		}
+ 
++		internal void SetBindingXBindProvider(object compiledSource, Func<object, (bool, object)> xBindSelector, Action<object, object> xBindBack, Type sourceType, string[] propertyPaths = null)
++		{
++			CompiledSource = compiledSource;
++			XBindSelector = xBindSelector;
++			XBindPropertyPaths = propertyPaths;
++			XBindBack = xBindBack;",2025-11-20T13:05:52Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,Human Developer,Resolved
+2955734027,https://api.github.com/repos/microsoft/typescript-go/pulls/3147,testdata/tests/cases/compiler/esDecoratorsPropertyAccessSameNameAsClass.ts,Copilot,Copilot,Architectural Patterns,"New compiler tests are typically run under strict mode unless the scenario specifically depends on non-strict behavior. Consider adding `// @strict: true` here to keep the test aligned with the repository’s usual regression-test configuration.
+","@@ -0,0 +1,42 @@
++// @target: es2020",2026-03-18T19:25:50Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+3019579348,https://api.github.com/repos/rodrigogs/whats-reader/pulls/66,src/lib/components/ReselectFileModal.svelte,rodrigogs,Copilot,General Design/Maintainability,Fixed in 6c8854c. Added `onkeydown` handler (Enter/Space triggers file picker) and `onclick` handler to the drop zone. Also added `bind:this={fileInputRef}` to the hidden file input so both handlers can programmatically activate it.,"@@ -0,0 +1,158 @@
++<script lang=""ts"">
++import { getInitials } from '$lib/helpers/format';
++import * as m from '$lib/paraglide/messages';
++import type { PersistedChatMetadata } from '$lib/persistence.svelte';
++import Icon from './Icon.svelte';
++import Modal from './Modal.svelte';
++import ModalContent from './ModalContent.svelte';
++import ModalHeader from './ModalHeader.svelte';
++
++interface Props {
++	chatMetadata: PersistedChatMetadata;
++	onFileSelected: (file: File) => void;
++	onSkip: () => void;
++	onClose: () => void;
++}
++
++let { chatMetadata, onFileSelected, onSkip, onClose }: Props = $props();
++
++let dragCounter = $state(0);
++let isDragging = $derived(dragCounter > 0);
++
++function handleDrop(e: DragEvent) {
++	e.preventDefault();
++	e.stopPropagation();
++	dragCounter = 0;
++
++	const files = e.dataTransfer?.files;
++	if (files && files.length > 0) {
++		const file = files[0];
++		if (file.name.endsWith('.zip')) {
++			onFileSelected(file);
++		}
++	}
++}
++
++function handleDragOver(e: DragEvent) {
++	e.preventDefault();
++	e.stopPropagation();
++}
++
++function handleDragEnter(e: DragEvent) {
++	e.preventDefault();
++	e.stopPropagation();
++	dragCounter++;
++}
++
++function handleDragLeave(e: DragEvent) {
++	e.preventDefault();
++	e.stopPropagation();
++	dragCounter--;
++}
++
++function handleFileInput(e: Event) {
++	const input = e.target as HTMLInputElement;
++	const files = input.files;
++	if (files && files.length > 0) {
++		const file = files[0];
++		if (file.name.endsWith('.zip')) {
++			onFileSelected(file);
++		}
++	}
++}
++</script>
++
++<Modal open={true} onClose={onClose}>
++	<ModalHeader title={m.persistence_reselect_title()} onClose={onClose} />
++	<ModalContent>
++		<div class=""flex flex-col gap-5 sm:gap-6"">
++			<!-- Description with icon -->
++			<div class=""flex gap-2 sm:gap-3 items-start p-3 sm:p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg sm:rounded-xl border border-amber-200 dark:border-amber-800/30"">
++				<div class=""flex-shrink-0 mt-0.5"">
++					<Icon name=""alert-circle"" size=""md"" class=""text-amber-600 dark:text-amber-500"" />
++				</div>
++				<p class=""text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed"">
++					{m.persistence_reselect_description({ chatTitle: chatMetadata.chatTitle })}
++				</p>
++			</div>
++
++			<!-- Chat info card -->
++			<div class=""flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-[var(--color-whatsapp-light-green)] dark:bg-[var(--color-whatsapp-dark-green)]/20 rounded-lg sm:rounded-xl border border-[var(--color-whatsapp-teal)]/20"">
++				<!-- Avatar with initials -->
++				<div class=""flex-shrink-0"">
++					<div class=""w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-semibold text-white text-sm sm:text-base shadow-sm bg-[var(--color-whatsapp-teal)]"">
++						{getInitials(chatMetadata.chatTitle)}
++					</div>
++				</div>
++				<!-- Chat details -->
++				<div class=""flex-1 min-w-0"">
++					<h3 class=""font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100 truncate mb-1"">
++						{chatMetadata.chatTitle}
++					</h3>
++					<div class=""flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400"">
++						<Icon name=""file"" size=""xs"" />
++						<span class=""truncate"">{chatMetadata.fileName}</span>
++					</div>
++				</div>
++			</div>
++
++			<!-- File drop zone with improved styling -->
++			<div
++				role=""button""
++				tabindex=""0""
++				aria-label={m.persistence_drop_zip()}
++				class=""border-2 border-dashed rounded-lg sm:rounded-xl p-6 sm:p-10 text-center transition-all cursor-pointer
++					{isDragging
++						? 'border-[var(--color-whatsapp-teal)] bg-[var(--color-whatsapp-light-green)] dark:bg-[var(--color-whatsapp-dark-green)]/20 scale-[1.02]'
++						: 'border-neutral-300 dark:border-neutral-600 hover:border-[var(--color-whatsapp-teal)]/50 hover:bg-neutral-50 dark:hover:bg-neutral-800/30'}""",2026-04-01T03:40:37Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2291782527,https://api.github.com/repos/appwrite/website/pulls/2298,src/lib/utils/specs.ts,Copilot,Copilot,Duplication/Reuse,Merged the POST method handling logic into a single conditional block. The separate blocks now share the same `methods?.post?.tags?.includes(service)` check and use if/else logic inside to handle regular POST methods vs x-appwrite.methods. This eliminates the code duplication while maintaining the same functionality. Commit e87fa8d,"@@ -203,6 +203,7 @@ function* iterateAllMethods(
+         }
+         if (
+             methods?.post &&
++            methods?.post?.tags?.includes(service) &&",2025-08-21T18:02:13Z,True,Code Duplication & Component Reuse,Localized Context Truncation,Agent re-implemented logic or UI markup rather than identifying and reusing existing helper components.,Adopt Existing Utility / Extract Shared Component,AI Coding Agent,Resolved
+2361908550,https://api.github.com/repos/InvolutionHell/involutionhell/pulls/84,app/components/Contribute.tsx,Copilot,OpenAI_Codex,Architectural Patterns,"The regex pattern requires filenames to start with an alphanumeric character but allows empty strings after the first character due to the `*` quantifier. This means a single character filename like 'a' is valid, but the pattern should ensure meaningful filenames. Consider using `+` instead of `*` to require at least one additional character, or add a minimum length check.
+```suggestion
+const FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]+$/;
+```","@@ -23,6 +23,8 @@ import { buildDocsNewUrl } from ""@/lib/github"";
+ 
+ type DirNode = { name: string; path: string; children?: DirNode[] };
+ 
++const FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;",2025-09-19T06:22:16Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2968385410,https://api.github.com/repos/aptos-labs/explorer/pulls/1497,app/pages/Account/Tabs/ModulesTab/Tabs.tsx,Copilot,Cursor,Modularity & Layering,"`moduleName` is sourced from `selectedModuleName`, but on the Packages tab that path segment is a *package name*, not a module name. Entering diff mode from Packages will therefore compare an invalid module name (often resulting in empty/""no differences"" output). Consider mapping the selected package to a default module (e.g., first module in that package) or requiring navigation to the Code tab / a module-specific route before rendering `ModuleDiffView`.","@@ -264,22 +300,66 @@ function ModulesTabs({
+         borderRadius={1}
+         bgcolor={theme.palette.background.paper}
+       >
+-        <StyledTabs value={value} onChange={handleChange}>
+-          {tabValues.map((value, i) => (
+-            <StyledTab
+-              secondary
+-              key={value}
+-              value={value}
+-              icon={getTabIcon(value)}
+-              label={getTabLabel(value)}
+-              isFirst={i === 0}
+-              isLast={i === tabValues.length - 1}
+-            />
+-          ))}
+-        </StyledTabs>
++        <ModuleVersionSelector
++          address={address}
++          selectedVersion={ledgerVersion}
++          onVersionChange={handleVersionChange}
++          diffMode={diffMode}
++          onDiffModeToggle={handleDiffModeToggle}
++        />
++        <Box mt={2}>
++          <StyledTabs value={value} onChange={handleChange}>
++            {tabValues.map((tabKey, i) => {
++              const isDisabled =
++                ledgerVersion !== undefined &&
++                (tabKey === ""run"" || tabKey === ""view"");
++              const tab = (
++                <StyledTab
++                  secondary
++                  key={tabKey}
++                  value={tabKey}
++                  icon={getTabIcon(tabKey)}
++                  label={getTabLabel(tabKey)}
++                  isFirst={i === 0}
++                  isLast={i === tabValues.length - 1}
++                  disabled={isDisabled}
++                />
++              );
++              if (isDisabled) {
++                return (
++                  <Tooltip
++                    key={tabKey}
++                    title=""Run and View are not available for historical versions""
++                    arrow
++                  >
++                    <span>{tab}</span>
++                  </Tooltip>
++                );
++              }
++              return tab;
++            })}
++          </StyledTabs>
++        </Box>
+       </Box>
+       <Box>
+-        <TabPanel value={value} address={address} isObject={isObject} />
++        {diffMode && publishHistory && publishHistory.length >= 2 ? (
++          <ModuleDiffView
++            address={address}
++            moduleName={selectedModuleName || """"}
++            publishHistory={publishHistory}
++            baseVersion={diffBaseVersion}
++            compareVersion={diffCompareVersion}
++            onBaseVersionChange={setDiffBaseVersion}
++            onCompareVersionChange={setDiffCompareVersion}
++          />",2026-03-20T23:32:44Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2612644917,https://api.github.com/repos/Azure/azure-sdk-tools/pulls/12828,tools/sdk-ai-bots/azure-sdk-qa-bot-backend/test/utils_test.go,JiaqiZhang-Dev,Copilot,General Design/Maintainability,"@chunyu3 Those chunks contain chunk metadata and content, we have a post-process logic for chunks searched from AI Search.
+
+related codes:
+https://github.com/Azure/azure-sdk-tools/blob/main/tools/sdk-ai-bots/azure-sdk-qa-bot-backend/service/agent/service.go#L688
+https://github.com/Azure/azure-sdk-tools/blob/main/tools/sdk-ai-bots/azure-sdk-qa-bot-backend/service/agent/service.go#L169","@@ -0,0 +1,58 @@
++package test
++
++import (
++	""testing""
++
++	""github.com/azure-sdk-tools/tools/sdk-ai-bots/azure-sdk-qa-bot-backend/model""
++	""github.com/azure-sdk-tools/tools/sdk-ai-bots/azure-sdk-qa-bot-backend/utils""
++	""github.com/stretchr/testify/assert""
++)
++
++func TestFilterInvalidReferenceLinks_ValidLinks(t *testing.T) {
++	chunks := []string{
++		""Check out this guide: https://example.com/path?param=value&other=123#section"",",2025-12-12T02:15:21Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2338530934,https://api.github.com/repos/mermaid-js/mermaid/pulls/6845,packages/mermaid/src/diagrams/c4/svgDraw.js,Copilot,Claude_Code,Architectural Patterns,"[nitpick] Inconsistent use of nullish coalescing operator. Lines 25-26 use ternary operators for the same pattern. Consider using nullish coalescing consistently for all similar checks.
+```suggestion
+    let offsetX = parseInt(rel.offsetX ?? 0);
+    let offsetY = parseInt(rel.offsetY ?? 0);
+```","@@ -20,11 +20,20 @@ export const drawRels = (elem, rels, conf) => {
+   const relsElem = elem.append('g');
+   let i = 0;
+   for (let rel of rels) {
+-    let textColor = rel.textColor ? rel.textColor : '#444444';
+-    let strokeColor = rel.lineColor ? rel.lineColor : '#444444';
++    let textColor = rel.textColor ?? '#444444';
++    let strokeColor = rel.lineColor ?? '#444444';
+     let offsetX = rel.offsetX ? parseInt(rel.offsetX) : 0;
+     let offsetY = rel.offsetY ? parseInt(rel.offsetY) : 0;",2025-09-11T04:44:58Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2141166053,https://api.github.com/repos/microsoft/retina/pulls/1649,cli/cmd/capture/create.go,Copilot,Copilot,Abstraction & Extensibility,"I've simplified the interface selection to match your requested user experience. Removed the `--all-interfaces` flag entirely and kept only the `--interfaces` flag. 
+
+- Default: `kubectl retina capture create --node-selectors=""agentpool=agentpool""` uses `-i any` 
+- Custom: `kubectl retina capture create --node-selectors=""agentpool=agentpool"" --interfaces=""eth0,eth1""` uses specific interfaces
+
+Commit 5a36e1c.","@@ -93,7 +94,7 @@ var createExample = templates.Examples(i18n.T(`
+ 		kubectl retina capture create --node-selectors=""agentpool=agentpool"" --interface=""eth0,eth1""
+ 
+ 		# Disable capturing on all interfaces (uses first available interface)
+-		kubectl retina capture create --node-selectors=""agentpool=agentpool"" --no-all-interfaces
++		kubectl retina capture create --node-selectors=""agentpool=agentpool"" --all-interfaces=false",2025-06-11T21:44:51Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,AI Coding Agent,Resolved
+2296434619,https://api.github.com/repos/bdunderscore/modular-avatar/pulls/1701,Editor/ReactiveObjects/MeshFiltering/VertexFilterByShapeProvider.cs,Copilot,Copilot,Architectural Patterns,"Fixed in 8278e64 - I've removed the separate `VertexFilterByShapeProvider` class and added the `[ProvidesVertexFilter]` attribute directly to the existing `VertexFilterByShape` class, following the same pattern as `VertexFilterByAxis` and `VertexFilterByMask`.","@@ -0,0 +1,50 @@
++#nullable enable
++
++using System;
++using nadena.dev.modular_avatar.core.vertex_filters;
++using nadena.dev.ndmf.preview;
++
++namespace nadena.dev.modular_avatar.core.editor
++{
++    [ProvidesVertexFilter(typeof(VertexFilterByShapeComponent))]
++    internal sealed class VertexFilterByShapeProvider : IVertexFilter",2025-08-24T01:58:06Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2607601119,https://api.github.com/repos/openemr/openemr/pulls/9740,.pre-commit-config.yaml,Copilot,Copilot,Modularity & Layering,Added ccdaservice/package-lock.json and interface/modules/custom_modules/.*/package-lock.json to the exclude pattern. (4c039ed),"@@ -0,0 +1,92 @@
++# See https://pre-commit.com for more information
++# See https://pre-commit.com/hooks.html for more hooks
++exclude: ^(composer\.lock|package-lock\.json)$",2025-12-10T17:33:01Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2702672913,https://api.github.com/repos/github/gh-aw/pulls/10607,actions/setup/js/assign_to_agent.cjs,Copilot,Copilot,General Design/Maintainability,"Fixed in 3ec5193. When a branch is specified, the handler now calls `gh agent-task create #<issue_number> --base <branch>` which properly passes the branch parameter to the agent task creation API. Falls back to standard GraphQL assignment if the CLI command fails.",,2026-01-18T19:41:03Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2505313636,https://api.github.com/repos/microsoft/Agents-for-net/pulls/506,src/libraries/Builder/Microsoft.Agents.Builder/Errors/ErrorHelper.cs,Copilot,Copilot,General Design/Maintainability,"Error code -50007 is skipped in the sequence. The code jumps from -50006 (StreamingResponseEnded) to -50008 (UserAuthorizationNotConfigured). Consider using -50007 to maintain sequential error codes, which improves maintainability.
+```suggestion
+
+        // Reserved or unknown user authorization error
+        internal static readonly AgentErrorDefinition UserAuthorizationUnknownError = new AgentErrorDefinition(-50007, Properties.Resources.UserAuthorizationUnknownError, ""https://aka.ms/AgentsSDK-Error01"");
+```","@@ -28,50 +28,47 @@ namespace Microsoft.Agents.Builder.Errors
+     /// </summary>
+     internal static partial class ErrorHelper
+     {
+-        /// <summary>
+-        /// Base error code for the authentication provider
+-        /// </summary>
+-        private static readonly int baseBuilderErrorCode = -50000;
++        // Base error code for the builder: -50000
+ 
+-        internal static AgentErrorDefinition NullIAccessTokenProvider = new AgentErrorDefinition(baseBuilderErrorCode, Properties.Resources.IAccessTokenProviderNotFound, ""https://aka.ms/AgentsSDK-Error01"");
+-        internal static AgentErrorDefinition NullUserTokenProviderIAccessTokenProvider = new AgentErrorDefinition(baseBuilderErrorCode - 1, Properties.Resources.IAccessTokenProviderNotFound, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition NullIAccessTokenProvider = new AgentErrorDefinition(-50000, Properties.Resources.IAccessTokenProviderNotFound, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition NullUserTokenProviderIAccessTokenProvider = new AgentErrorDefinition(-50001, Properties.Resources.IAccessTokenProviderNotFound, ""https://aka.ms/AgentsSDK-Error01"");
+ 
+         // Application RouteAttribute
+-        internal static AgentErrorDefinition AttributeSelectorNotFound = new AgentErrorDefinition(baseBuilderErrorCode - 2, Properties.Resources.AttributeSelectorNotFound, ""https://aka.ms/AgentsSDK-Error01"");
+-        internal static AgentErrorDefinition AttributeSelectorInvalid = new AgentErrorDefinition(baseBuilderErrorCode - 3, Properties.Resources.AttributeSelectorInvalid, ""https://aka.ms/AgentsSDK-Error01"");
+-        internal static AgentErrorDefinition AttributeHandlerInvalid = new AgentErrorDefinition(baseBuilderErrorCode - 4, Properties.Resources.AttributeHandlerInvalid, ""https://aka.ms/AgentsSDK-Error01"");
+-        internal static AgentErrorDefinition AttributeMissingArgs = new AgentErrorDefinition(baseBuilderErrorCode - 5, Properties.Resources.AttributeMissingArgs, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition AttributeSelectorNotFound = new AgentErrorDefinition(-50002, Properties.Resources.AttributeSelectorNotFound, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition AttributeSelectorInvalid = new AgentErrorDefinition(-50003, Properties.Resources.AttributeSelectorInvalid, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition AttributeHandlerInvalid = new AgentErrorDefinition(-50004, Properties.Resources.AttributeHandlerInvalid, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition AttributeMissingArgs = new AgentErrorDefinition(-50005, Properties.Resources.AttributeMissingArgs, ""https://aka.ms/AgentsSDK-Error01"");
+ 
+         // StreamingMessages
+-        internal static AgentErrorDefinition StreamingResponseEnded = new AgentErrorDefinition(baseBuilderErrorCode - 6, Properties.Resources.StreamingResponseEnded, ""https://aka.ms/AgentsSDK-Error01"");
++        internal static readonly AgentErrorDefinition StreamingResponseEnded = new AgentErrorDefinition(-50006, Properties.Resources.StreamingResponseEnded, ""https://aka.ms/AgentsSDK-Error01"");
+ ",2025-11-07T20:11:30Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2626786040,https://api.github.com/repos/airalab/robonomics/pulls/450,tools/cps/src/commands/create.rs,Copilot,Copilot,Architectural Patterns,"Same issue as with meta: this will panic if payload is None. The conditional checks `encrypt && payload.is_some()`, but after the meta processing, payload may have been moved. Use pattern matching or ensure proper handling to avoid potential panics.","@@ -65,9 +60,30 @@ pub async fn execute(
+         display::tree::info(""Creating root node"");
+     }
+ 
+-    // Convert strings to NodeData using From trait
+-    let meta_data = meta.map(|m| NodeData::from(m));
+-    let payload_data = payload.map(|p| NodeData::from(p));
++    // Convert strings to NodeData, applying encryption if requested
++    let meta_data = if encrypt && meta.is_some() {
++        display::tree::info(&format!(""🔐 Encrypting metadata with {}"", algorithm));
++        display::tree::info(&format!(""🔑 Using keypair type: {}"", keypair_type));
++        
++        let plaintext = meta.unwrap();
++        let encrypted_bytes = encrypt_data(plaintext.as_bytes(), config, algorithm, keypair_type)?;
++        Some(NodeData::encrypted_bytes(encrypted_bytes, algorithm))
++    } else {
++        meta.map(|m| NodeData::from(m))
++    };
++
++    let payload_data = if encrypt && payload.is_some() {
++        if meta.is_none() {
++            display::tree::info(&format!(""🔐 Encrypting payload with {}"", algorithm));
++            display::tree::info(&format!(""🔑 Using keypair type: {}"", keypair_type));
++        }
++        
++        let plaintext = payload.unwrap();",2025-12-17T12:00:17Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2633354464,https://api.github.com/repos/lablup/backend.ai/pulls/7494,src/ai/backend/manager/services/deployment/service.py,Copilot,Claude_Code,Architectural Patterns,"The newly added `activate_revision` method lacks test coverage. Similar methods in the deployment service have comprehensive tests (e.g., in tests/manager/repositories/deployment/test_deployment_repository.py), but there are no tests for this revision activation feature. Test cases should cover success scenarios, error cases like nonexistent revisions, permission checks, and validation that the revision belongs to the deployment.","@@ -462,6 +466,56 @@ async def get_deployment_policy(
+         data = await self._deployment_controller.get_deployment_policy(action.endpoint_id)
+         return GetDeploymentPolicyActionResult(data=data)
+ 
++    # ========== Revision Operations Methods ==========
++
++    async def activate_revision(
++        self, action: ActivateRevisionAction
++    ) -> ActivateRevisionActionResult:
++        """"""Activate a specific revision to be the current revision.
++
++        Args:
++            action: Action containing deployment and revision IDs
++
++        Returns:
++            ActivateRevisionActionResult: Result containing the updated deployment
++        """"""
++        # For now, return mock data
++        # TODO: Implement actual activation logic:
++        # 1. Validate revision exists and belongs to deployment
++        # 2. Update endpoint.current_revision
++        # 3. Trigger lifecycle check
++        return ActivateRevisionActionResult(
++            deployment=ModelDeploymentData(
++                id=action.deployment_id,
++                metadata=ModelDeploymentMetadataInfo(
++                    name=""test-deployment"",
++                    status=ModelDeploymentStatus.READY,
++                    tags=[""tag1"", ""tag2""],
++                    project_id=uuid4(),
++                    domain_name=""default"",
++                    created_at=datetime.now(),
++                    updated_at=datetime.now(),
++                ),
++                network_access=DeploymentNetworkSpec(
++                    open_to_public=True,
++                    url=""http://example.com"",
++                    preferred_domain_name=""example.com"",
++                    access_token_ids=[uuid4()],
++                ),
++                revision_history_ids=[uuid4(), uuid4()],
++                revision=mock_revision_data_1,
++                scaling_rule_ids=[uuid4(), uuid4()],
++                replica_state=ReplicaStateData(
++                    desired_replica_count=3,
++                    replica_ids=[uuid4(), uuid4(), uuid4()],
++                ),
++                default_deployment_strategy=DeploymentStrategy.ROLLING,
++                created_user_id=uuid4(),
++            ),
++            previous_revision_id=uuid4(),
++            activated_revision_id=action.revision_id,
++        )",2025-12-19T02:31:15Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2903009773,https://api.github.com/repos/jonathanpeppers/dotnes/pulls/159,samples/siegegame/Program.cs,Copilot,Copilot,Architectural Patterns,"The controller bit masks here are incorrect (e.g., `PAD_UP = 0x08` is actually START per `NES.PAD`, and `PAD_DOWN = 0x04` is SELECT). This will break cursor movement and any other d-pad logic. Suggest removing these constants and using the built-in `PAD` enum (`PAD.UP/DOWN/START/SELECT`) or correcting the values to match `src/neslib/Enums.cs`.
+```suggestion
+const byte PAD_UP = 0x10;
+const byte PAD_DOWN = 0x20;
+```","@@ -0,0 +1,508 @@
++/*
++Based on: https://8bitworkshop.com/ (siegegame.c)
++
++A tower-defense siege game for NES.
++Enemies march from the right side toward the castle on the left.
++The player places walls to block enemy paths.
++Uses vram_read for collision detection, 20+ user functions,
++and string.Length for HUD display.
++*/
++
++#pragma warning disable CS0649, CS0219
++
++// Tile constants
++const byte CH_BLANK = 0x00;
++const byte CH_WALL = 0x01;
++const byte CH_CASTLE = 0x02;
++const byte CH_ENEMY = 0x03;
++const byte CH_CURSOR = 0x04;
++const byte CH_FLOOR = 0x05;
++
++// Game constants
++const byte BOARD_X = 2;
++const byte BOARD_Y = 4;
++const byte BOARD_W = 26;
++const byte BOARD_H = 20;
++const byte MAX_ENEMIES = 8;
++const byte STATE_TITLE = 0;
++const byte STATE_PLAY = 1;
++const byte STATE_OVER = 2;
++const byte PAD_A = 0x01;
++const byte PAD_B = 0x02;
++const byte PAD_UP = 0x08;
++const byte PAD_DOWN = 0x04;",2026-03-09T03:30:49Z,True,Architectural Pattern Violation / Modularity Breach,Missing Global Architectural Awareness,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2544420737,https://api.github.com/repos/fern-api/fern/pulls/10728,seed/ts-sdk/simple-api/use-yarn/src/auth/BearerAuthProvider.ts,Swimburger,Devin,Abstraction & Extensibility,"Update `toAuthorizationHeader` so that the first parameter is generic, so it can be inferred whether `token` can be undefined, if not undefined, the return should be typed as not undefined too","@@ -0,0 +1,33 @@
++// This file was auto-generated by Fern from our API Definition.
++
++import * as core from ""../core/index.js"";
++import * as errors from ""../errors/index.js"";
++
++export namespace BearerAuthProvider {
++    export interface Options {
++        token: core.Supplier<string>;
++    }
++}
++
++export class BearerAuthProvider implements core.AuthProvider {
++    private readonly token: core.Supplier<string>;
++
++    constructor(options: BearerAuthProvider.Options) {
++        this.token = options.token;
++    }
++
++    public async getAuthRequest(): Promise<core.AuthRequest> {
++        const token = await core.Supplier.get(this.token);
++        if (token == null) {
++            throw new errors.SeedSimpleApiError({
++                message: ""Please specify a token by passing it in to the constructor"",
++            });
++        }
++
++        const authHeader = core.BearerToken.toAuthorizationHeader(token);",2025-11-20T05:43:24Z,True,Inappropriate Abstraction / Premature Complexity,Speculative Over-Engineering,"Agent introduced excessive nesting, deep inheritance, or unnecessary wrapper data structures.",Simplify Abstraction & Flatten Structure,AI Coding Agent,Resolved
+2947812283,https://api.github.com/repos/tigera/operator/pulls/4474,pkg/controller/utils/utils.go,coutinhop,Claude_Code,General Design/Maintainability,"In theory, it shouldn't break things, since the pod-networked pods should work fine with the api server service, but by adding the `*_POD_NETWORK` fields to the configmap, we have a quick workaround in case things don't work so well in practice. Would that be OK?","@@ -449,8 +449,10 @@ func PopulateK8sServiceEndPoint(client client.Client) error {
+ 			return fmt.Errorf(""failed to read ConfigMap %q: %s"", render.K8sSvcEndpointConfigMapName, err)
+ 		}
+ 	} else {
+-		k8sapi.Endpoint.Host = cm.Data[""KUBERNETES_SERVICE_HOST""]
+-		k8sapi.Endpoint.Port = cm.Data[""KUBERNETES_SERVICE_PORT""]
++		k8sapi.Endpoint.HostNetworkHost = cm.Data[""KUBERNETES_SERVICE_HOST""]
++		k8sapi.Endpoint.HostNetworkPort = cm.Data[""KUBERNETES_SERVICE_PORT""]
++		k8sapi.Endpoint.PodNetworkHost = cm.Data[""KUBERNETES_SERVICE_HOST_POD_NETWORK""]
++		k8sapi.Endpoint.PodNetworkPort = cm.Data[""KUBERNETES_SERVICE_PORT_POD_NETWORK""]",2026-03-17T15:54:55Z,True,General Maintainability Issue,Missing Global Architectural Awareness,Agent prioritized local functional completion while neglecting long-term codebase maintainability.,In-place Refactoring,Human Developer,Resolved
+2605644575,https://api.github.com/repos/Azure/azure-sdk-tools/pulls/12828,tools/sdk-ai-bots/azure-sdk-qa-bot-backend/utils/links.go,Copilot,Copilot,Architectural Patterns,"The regex pattern `https?://[^\s)]+` will incorrectly include trailing punctuation in URLs. While line 27 attempts to clean this up, it only trims from the right side after extraction. For example, a URL like `https://example.com/guide.` in text will be extracted as `https://example.com/guide.` and then trimmed to `https://example.com/guide`, but `(https://example.com)` would extract as `https://example.com` directly due to the exclusion of `)` in the regex, creating inconsistency.
+
+Consider using a more precise regex pattern or applying the trimming logic consistently to all extracted URLs regardless of regex exclusions.","@@ -0,0 +1,60 @@
++package utils
++
++import (
++	""log""
++	""regexp""
++	""strings""
++
++	""github.com/azure-sdk-tools/tools/sdk-ai-bots/azure-sdk-qa-bot-backend/model""
++)
++
++// FilterInvalidReferenceLinks checks if links in the LLM response actually appeared in the prompt chunks
++// to prevent hallucination. It removes references with invalid links and logs warnings.
++func FilterInvalidReferenceLinks(references []model.Reference, chunks []string) []model.Reference {
++	if len(references) == 0 {
++		return nil
++	}
++
++	// Extract all links from chunks
++	validLinks := make(map[string]bool)
++	// Regex to match URLs in the chunks (http/https links)
++	urlRegex := regexp.MustCompile(`https?://[^\s)]+`)
++
++	for _, chunk := range chunks {
++		matches := urlRegex.FindAllString(chunk, -1)
++		for _, match := range matches {
++			// Clean up any trailing punctuation that might have been captured
++			match = strings.TrimRight(match, "".,;:)"")
++			validLinks[match] = true
++		}",2025-12-10T08:18:12Z,True,Architectural Pattern Violation / Modularity Breach,Pattern Misalignment,Agent violated repository-specific architectural conventions or domain-layer boundaries.,In-place Refactoring to Match Repository Conventions,Human Developer,Resolved
+2635114322,https://api.github.com/repos/dotnet/aspnetcore/pulls/63820,src/Components/Endpoints/src/Builder/EndpointRouteBuilderResourceCollectionExtensions.cs,Copilot,Copilot,Duplication/Reuse,"Creating a new `ResourceCollectionResolver` instance inside the lambda that executes for each endpoint can be inefficient. The resolver performs the same work (resolving static asset descriptors) for every endpoint that gets created. Consider creating the resolver once outside the lambda and reusing it, similar to how the `ResourceCollectionConvention` pattern works in the existing codebase. This would avoid redundant lookups and improve performance when multiple endpoints are created.
+```suggestion
+        if (builder is not IEndpointRouteBuilder routeBuilder)
+        {
+            return builder;
+        }
+
+        var resolver = new ResourceCollectionResolver(routeBuilder);
+
+        builder.Add(endpointBuilder =>
+        {
+            // Check if there's already a resource collection on the metadata
+            if (endpointBuilder.Metadata.OfType<ResourceAssetCollection>().Any())
+            {
+                return;
+            }
+
+            // Only add metadata if static assets are registered
+            if (!resolver.IsRegistered(manifestPath))
+            {
+                return;
+            }
+
+            var collection = resolver.ResolveResourceCollection(manifestPath);
+            var importMap = ImportMapDefinition.FromResourceCollection(collection);
+
+            endpointBuilder.Metadata.Add(collection);
+            endpointBuilder.Metadata.Add(new ResourcePreloadCollection(collection));
+            endpointBuilder.Metadata.Add(importMap);
+        });
+```","@@ -0,0 +1,58 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Linq;
++using Microsoft.AspNetCore.Components;
++using Microsoft.AspNetCore.Components.Endpoints;
++using Microsoft.AspNetCore.Routing;
++
++namespace Microsoft.AspNetCore.Builder;
++
++/// <summary>
++/// Extensions for <see cref=""IEndpointConventionBuilder""/> to add resource collection metadata.
++/// </summary>
++public static class EndpointConventionBuilderResourceCollectionExtensions
++{
++    /// <summary>
++    /// Provides a helper to attach ResourceCollection metadata to endpoints.
++    /// </summary>
++    /// <param name=""builder"">The <see cref=""IEndpointConventionBuilder""/>.</param>
++    /// <param name=""manifestPath"">The manifest associated with the assets.</param>
++    /// <returns>The <see cref=""IEndpointConventionBuilder""/> that can be used to further configure the endpoints.</returns>
++    /// <remarks>
++    /// This method attaches static asset metadata to endpoints. It provides a simplified way to add 
++    /// resource collection metadata to any endpoint convention builder.
++    /// The <paramref name=""manifestPath""/> must match the path of the manifest file provided to
++    /// the <see cref=""StaticAssetsEndpointRouteBuilderExtensions.MapStaticAssets(IEndpointRouteBuilder, string?)""/> call.
++    /// </remarks>
++    public static IEndpointConventionBuilder WithStaticAssets(
++        this IEndpointConventionBuilder builder,
++        string? manifestPath = null)
++    {
++        ArgumentNullException.ThrowIfNull(builder);
++
++        builder.Add(endpointBuilder =>
++        {
++            // Check if there's already a resource collection on the metadata or if the builder is not an IEndpointRouteBuilder
++            if (endpointBuilder.Metadata.OfType<ResourceAssetCollection>().Any() || builder is not IEndpointRouteBuilder routeBuilder)
++            {
++                return;
++            }
++
++            var resolver = new ResourceCollectionResolver(routeBuilder);
++            
++            // Only add metadata if static assets are registered
++            if (resolver.IsRegistered(manifestPath))
++            {
++                var collection = resolver.ResolveResourceCollection(manifestPath);
++                var importMap = ImportMapDefinition.FromResourceCollection(collection);
++
++                endpointBuilder.Metadata.Add(collection);
++                endpointBuilder.Metadata.Add(new ResourcePreloadCollection(collection));
++                endpointBuilder.Metadata.Add(importMap);
++            }
++        });
++        ",2025-12-19T13:31:56Z,True,Code Redundancy / Duplicate Declaration,Localized Context Truncation,Agent declared redundant variables/imports without scanning existing declarations in file scope.,In-place Refactoring (Remove Duplicate),Human Developer,Resolved
