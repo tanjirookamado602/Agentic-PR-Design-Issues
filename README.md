@@ -21,6 +21,7 @@
 1. `data/` contains:
    - `empirical_findings_full.json`: aggregated statistical metrics and cross-agent design issue distributions across 218,071 substantive human comments.
    - `gold_sample_200_for_coding.csv`: the sampled gold dataset for qualitative open coding of root causes (RQ2) and remediation strategies (RQ3).
+   - `gold_sample_200_coded.csv`: fully verified qualitative open coding across all 200 review comment discussions with root causes, remediation strategies, and actor attributions.
    - `pilot_summary.json`: pilot calibration metrics and inter-rater reliability scores (Cohen's $\kappa = 0.84$).
 2. `scripts/` contains:
    - `formal_dataset_screening.py`: automated CI/CD bot elimination and calibrated keyword-assisted screening pipeline.
