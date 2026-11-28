@@ -62,3 +62,43 @@ A comment is NOT a Design Issue if it is:
   - **Outcome:** `Resolved in PR`, `Partially Resolved`, `Unresolved / Merged Anyway`, `PR Abandoned / Closed`.
   - **Strategy:** `Refactored Logic`, `Removed Redundancy`, `Adopted Existing API`, `Reverted Change`.
   - **Actor:** `AI Coding Agent` (follow-up commit from agent), `Human Contributor` (human took over), `Collaborative / Co-authored`.
+
+---
+
+## 4. Empirical Exemplars Across AI Coding Agents ($N = 200$ Gold Sample)
+
+Representative human review critiques extracted from `data/gold_sample_200_coded.csv` illustrate how each category and root cause manifests across the six evaluated agents:
+
+1. **Localized Context Truncation (`GitHub Copilot` — `PowerShell/PowerShell`, PR #26322):**
+   > *"@copilot implement this suggestion, but use the `StaticAnalysis` configuration. Make the configuration a parameter to `Invoke-CIBuild` so that we don't duplicate code."*
+   * **Classification:** Code Duplication & Component Reuse | **Actor:** AI Coding Agent (explicit re-prompting).
+
+2. **Pattern Misalignment (`Claude Code` — `cline/cline`, PR #8506):**
+   > *"The model ID comparison uses hardcoded string literals which could become brittle as new model versions are released. Consider extracting these into constants or using a pattern-matching approach..."*
+   * **Classification:** Architectural Pattern Violation | **Actor:** Human Developer.
+
+3. **Missing Global Architectural Awareness (`OpenAI Codex` — `MontrealAI/AGI-Alpha-Agent-v0`, PR #364):**
+   > *"This hard-coded repo path may break if the repository folder is renamed or structured differently. Use a relative path (e.g., `Path().cwd() / ...`) or locate the sample dynamically."*
+   * **Classification:** Architectural Pattern Violation | **Actor:** Human Developer.
+
+4. **Missing Global Architectural Awareness (`Cursor` — `aptos-labs/explorer`, PR #1497):**
+   > *"`moduleName` is sourced from `selectedModuleName`, but on the Packages tab that path segment is a *package name*, not a module name. Entering diff mode from Packages will therefore compare an invalid module name..."*
+   * **Classification:** Modularity & Layering Breach | **Actor:** Human Developer.
+
+5. **Speculative Over-Engineering (`Devin` — `near/nearcore`, PR #13318):**
+   > *"Wrapping `chunk.congestion_info()` with `Some()` is unnecessary now that `congestion_info` is a concrete type. Removing the `Some()` wrapper will ensure consistency with the updated type."*
+   * **Classification:** Inappropriate Abstraction / Premature Complexity | **Actor:** Human Developer.
+
+6. **Speculative Over-Engineering (`GitHub Copilot` — `benbalter/benbalter.github.com`, PR #1295):**
+   > *"The selector `body.index .content .row a` is overly specific with 4 levels of nesting. Consider using a more targeted class-based selector instead. This would improve maintainability and reduce specificity..."*
+   * **Classification:** Inappropriate Abstraction / Premature Complexity | **Actor:** Human Developer.
+
+---
+
+## 5. Boundary Decision Rules & Gold Sample Verification
+
+During Phase 3 human verification of `data/gold_sample_200_coded.csv` ($N = 200$), **198 entries (99.0%)** were confirmed as valid design issues and **2 entries (1.0%)** were excluded as false positives:
+
+* **Boundary Rule 1 (Comment & Documentation Noise $\rightarrow$ Exclude):** Comments solely criticizing English phrasing, markdown prose, or redundant inline comments (e.g., *"This comment is redundant as the subsequent code clearly shows event type assignments"*) are marked `is_design_issue = FALSE` unless they address code structure or architectural documentation contracts.
+* **Boundary Rule 2 (Indentation/Formatting vs. Structural Nesting $\rightarrow$ Distinguish):** Pure whitespace/indentation nits (e.g., 4-space alignment) are excluded as formatting, whereas excessive structural selector/control-flow nesting (e.g., 4-level CSS selector specificity or deep wrapper hierarchies) is retained under `Speculative Over-Engineering`.
+* **Boundary Rule 3 (Actor Attribution):** When a human reviewer supplies a direct GitHub `suggestion` block or commits the refactoring directly, `remediation_actor` is coded as `Human Developer` (72.2% of valid cases); when the reviewer explicitly tags the agent (e.g., `@copilot`) or the agent resolves the critique in a follow-up commit, it is coded as `AI Coding Agent` (27.8% of valid cases).
